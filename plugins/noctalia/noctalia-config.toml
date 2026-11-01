@@ -29,6 +29,7 @@ shadow = false
 end = [
     "group:g2",
     "volume",
+    "clipboard",
     "tray",
     "notifications",
     "session",

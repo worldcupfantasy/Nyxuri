@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # 由 Noctalia 主题引擎渲染（theme.templates.user.icons_recolor）。
-# 用当前 Material You 调色板重染 Adwaita-Matugen 图标主题的文件夹图标。
+# 用当前 Material You 调色板重染 Adwaita 图标主题的文件夹图标。
 #
+# 源图标直接取系统的 /usr/share/icons/Adwaita，不再依赖 matugen 的模板副本。
 # 为什么 A/B 交替：GTK 按图标主题名做缓存，原地改同名目录不会刷新。
 # 每次写入「另一个」变体再把 gsettings 切过去，等于强制所有应用重新加载。
 
@@ -10,8 +11,8 @@ set -euo pipefail
 COLOR_DARK="{{ colors.secondary.default.hex }}"
 COLOR_LIGHT="{{ colors.secondary_container.default.hex }}"
 
-TEMPLATE_DIR="$HOME/.config/matugen/templates/gtk-folder/Adwaita-Matugen"
-[[ -d "$TEMPLATE_DIR" ]] || exit 0
+SOURCE_DIR="/usr/share/icons/Adwaita"
+[[ -d "$SOURCE_DIR" ]] || exit 0
 command -v gsettings >/dev/null 2>&1 || exit 0
 
 # 同一时刻只允许一个实例（钩子在后台异步跑，主题连续切换会重入）
@@ -27,7 +28,7 @@ fi
 TARGET_DIR="$HOME/.local/share/icons/$TARGET"
 
 mkdir -p "$TARGET_DIR"
-cp -rf --reflink=auto --no-preserve=mode,ownership "$TEMPLATE_DIR/"* "$TARGET_DIR/"
+cp -rf --reflink=auto --no-preserve=mode,ownership "$SOURCE_DIR/"* "$TARGET_DIR/"
 sed -i "s/^Name=.*/Name=$TARGET/" "$TARGET_DIR/index.theme"
 
 # 16x16 PNG 文件夹图标：灰度化后套双色渐变
