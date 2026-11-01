@@ -30,6 +30,8 @@ TARGET_DIR="$HOME/.local/share/icons/$TARGET"
 mkdir -p "$TARGET_DIR"
 cp -rf --reflink=auto --no-preserve=mode,ownership "$SOURCE_DIR/"* "$TARGET_DIR/"
 sed -i "s/^Name=.*/Name=$TARGET/" "$TARGET_DIR/index.theme"
+# 继承链要保留 Papirus：系统 Adwaita 只继承 hicolor，直接复制会丢图标包
+sed -i "s/^Inherits=.*/Inherits=Papirus,Adwaita,AdwaitaLegacy,hicolor/" "$TARGET_DIR/index.theme"
 
 # 16x16 PNG 文件夹图标：灰度化后套双色渐变
 find "$TARGET_DIR" -name '*.png' -print0 | xargs -0 -r -P0 -I {} magick "{}" \
