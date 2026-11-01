@@ -348,6 +348,10 @@ visualization = "none"
 glyph = "cpu"
 visualization = "none"
 
+# 电源键左键改成打开控制中心主页（Home 标签），会话菜单仍在 Home 顶部按钮里
+[widget.session.actions]
+left = "panel-toggle control-center home"
+
 [widget.mpvpaper]
 type = "noctalia/mpvpaper:mpvpaper"
 
