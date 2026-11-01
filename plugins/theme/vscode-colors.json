@@ -1,0 +1,9 @@
+{
+  "checksum": ":)",
+  "alpha": "100",
+  "special": {
+    "background": "{{ colors.background.default.hex }}",
+    "foreground": "{{ colors.on_background.default.hex }}",
+    "cursor": "{{ colors.primary.default.hex }}"
+  }
+}

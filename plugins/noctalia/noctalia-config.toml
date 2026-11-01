@@ -281,6 +281,25 @@ input_path = "/home/user/.config/nyxuri/templates/mango.conf"
 output_path = "/home/user/.config/mango/noctalia.conf"
 post_hook = "mmsg dispatch reload_config 2>/dev/null || true"
 
+# VS Code（Code - OSS）matugen-theme 扩展监听这两个文件；
+# 由 Noctalia 用当前调色板渲染，扩展收到变更即重建主题。
+[theme.templates.user.vscode_colors]
+index = 8
+input_path = "/home/user/.config/nyxuri/templates/vscode-colors"
+output_path = "/home/user/.cache/matugen/vscode-colors"
+
+[theme.templates.user.vscode_colors_json]
+index = 9
+input_path = "/home/user/.config/nyxuri/templates/vscode-colors.json"
+output_path = "/home/user/.cache/matugen/vscode-colors.json"
+
+# Adwaita-Matugen 文件夹图标重染（A/B 变体交替，强制应用重载图标缓存）
+[theme.templates.user.icons_recolor]
+index = 10
+input_path = "/home/user/.config/nyxuri/templates/icons-recolor.sh"
+output_path = "/home/user/.cache/nyxuri/icons-recolor.sh"
+post_hook = "bash /home/user/.cache/nyxuri/icons-recolor.sh"
+
 [wallpaper]
 directory = "/home/user/图片/Wallpapers"
 fill_mode = "crop"
