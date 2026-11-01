@@ -102,6 +102,14 @@ radius = 20
 reserve_space = false
 show_dots = true
 smart_auto_hide = true
+# 常驻应用。QQ 用 linuxqq-wayland-fix（本地 qq.desktop 是 Hidden=true 的占位）
+pinned = [
+    "com.spotify.Client",
+    "com.tencent.WeChat",
+    "linuxqq-wayland-fix",
+    "google-chrome",
+    "localsend",
+]
 
 [idle]
 behavior_order = [ "lock", "screen-off", "lock-and-suspend" ]
