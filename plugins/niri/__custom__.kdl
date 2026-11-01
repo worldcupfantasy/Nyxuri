@@ -39,3 +39,22 @@
 // template bind, rebind that key here to the action you prefer.
 // 注意：niri 只能覆盖键位、不能解绑——想取消模板按键，在这里把它重新绑定
 // 为你想要的动作即可。
+
+// Noctalia 面板：实时模糊面板后面的程序窗口（不要只透壁纸）
+layer-rule {
+    match namespace="^noctalia-panel$"
+    background-effect {
+        blur true
+        xray false
+    }
+}
+
+// 浏览器保持不透明，不跟随全局 0.9 半透明和毛玻璃
+window-rule {
+    match app-id=r"^(google-chrome|chrome|chromium|firefox|firefox-esr|librewolf|zen|brave-browser|microsoft-edge|vivaldi-stable)$"
+    opacity 1.0
+    background-effect {
+        blur false
+    }
+}
+

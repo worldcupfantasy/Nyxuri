@@ -161,13 +161,11 @@ window-rule {
 }
 
 
-// Nautilus 文件管理器（居中浮动 + 黄金矩形比例 1.618:1 + 背景模糊）
+// Nautilus 文件管理器（平铺 + 背景模糊，宽度走布局默认 1/2）
 window-rule {
     match app-id=r"^org\.gnome\.Nautilus$"
     match app-id=r"^nautilus$"
-    open-floating true
-    default-column-width { proportion 0.40; }
-    default-window-height { proportion 0.44; }
+    open-floating false
     draw-border-with-background false
     background-effect { blur true; }
 }

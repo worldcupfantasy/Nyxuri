@@ -1,8 +1,7 @@
 // Niri Glow Part: Default (Classic Clean, No Glow Focus Ring)
 layout {
     focus-ring {
-        off
-        width 0
+        width 3
         active-color "#b6c7e7"
         inactive-color "#131315"
         urgent-color "#ffb4ab"

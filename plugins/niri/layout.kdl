@@ -21,8 +21,7 @@ layout {
     }
     default-column-width { proportion 0.5; }
     focus-ring {
-        off
-        width 0
+        width 3
         active-color "#b6c7e7"
         inactive-color "#131315"
         urgent-color "#ffb4ab"
