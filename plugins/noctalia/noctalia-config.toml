@@ -301,6 +301,13 @@ input_path = "/home/user/.config/nyxuri/templates/icons-recolor.sh"
 output_path = "/home/user/.cache/nyxuri/icons-recolor.sh"
 post_hook = "bash /home/user/.cache/nyxuri/icons-recolor.sh"
 
+# Flameshot 截图工具的主题色（改动需重启 flameshot 生效）
+[theme.templates.user.flameshot]
+index = 11
+input_path = "/home/user/.config/nyxuri/templates/flameshot.ini"
+output_path = "/home/user/.config/flameshot/flameshot.ini"
+post_hook = "pkill flameshot 2>/dev/null || true"
+
 [wallpaper]
 directory = "/home/user/图片/Wallpapers"
 fill_mode = "crop"
