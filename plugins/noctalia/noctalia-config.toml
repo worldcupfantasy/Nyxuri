@@ -95,7 +95,7 @@ visualization_mode = "wave_rings"
 auto_hide = false
 background_opacity = 0.6
 border = "primary"
-border_width = 2.0
+border_width = 5.0
 enabled = true
 margin_edge = 10
 radius = 20
@@ -315,6 +315,12 @@ index = 11
 input_path = "/home/user/.config/nyxuri/templates/flameshot.ini"
 output_path = "/home/user/.config/flameshot/flameshot.ini"
 post_hook = "pkill flameshot 2>/dev/null || true"
+
+# Niri 聚焦窗口描边/边框跟随壁纸主色（noctalia.kdl 在 config.kdl 最后 include，优先级最高）
+[theme.templates.user.niri_focus]
+index = 12
+input_path = "/home/user/.config/nyxuri/templates/niri-focus.kdl"
+output_path = "/home/user/.config/niri/noctalia.kdl"
 
 [wallpaper]
 directory = "/home/user/图片/Wallpapers"

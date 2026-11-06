@@ -1,0 +1,39 @@
+// Niri 聚焦/边框配色：由 Noctalia 按当前壁纸调色板渲染到 ~/.config/niri/noctalia.kdl
+// 该文件在 config.kdl 里最后 include，覆盖 layout.kdl / glow.kdl 的固定色。
+// 只换颜色，不改宽度与阴影，避免影响其他外观设置。
+//
+// active 用 primary_fixed_dim（tone 80）而不是 primary：
+// primary 在浅色模式是 tone 40，偏暗；tone 80 是同一个主色的高亮档，
+// 深浅两套模式下都够亮，且深色模式本来就等于 primary，观感不变。
+
+layout {
+
+    focus-ring {
+        active-color   "{{ colors.primary_fixed_dim.default.hex }}"
+        inactive-color "{{ colors.surface.default.hex }}"
+        urgent-color   "{{ colors.error.default.hex }}"
+    }
+
+    border {
+        active-color   "{{ colors.primary_fixed_dim.default.hex }}"
+        inactive-color "{{ colors.surface.default.hex }}"
+        urgent-color   "{{ colors.error.default.hex }}"
+    }
+
+    tab-indicator {
+        active-color   "{{ colors.primary.default.hex }}"
+        inactive-color "{{ colors.primary_container.default.hex }}"
+        urgent-color   "{{ colors.error.default.hex }}"
+    }
+
+    insert-hint {
+        color "{{ colors.primary.default.hex }}80"
+    }
+}
+
+recent-windows {
+    highlight {
+        active-color "{{ colors.primary.default.hex }}"
+        urgent-color "{{ colors.error.default.hex }}"
+    }
+}
