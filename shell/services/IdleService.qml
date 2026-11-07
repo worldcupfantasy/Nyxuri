@@ -5,7 +5,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.commons
-import qs.app
+import qs.services
 import qs.commons.i18n
 
 Singleton {
@@ -32,15 +32,15 @@ Singleton {
     property bool suspendRespectInhibitors: true
 
     readonly property string policyConfigDir: Paths.configHome
-    readonly property string policyConfigPath: policyConfigDir + "/idle-policy.json"
+    readonly property string policyConfigPath: ConfigService.filePath
     readonly property bool policyReady: policyStoreReady && !policyLoading
-    property bool policyStoreReady: false
+    readonly property bool policyStoreReady: ConfigService.storeReady
     property bool policyLoading: true
 
     property bool inhibited: false
     property bool dimmed: false
     property bool displaysOff: false
-    readonly property bool busy: lockPending || displayPowerProcess.running || suspendPending
+    readonly property bool busy: lockPending || _displayPowerBusy || suspendPending
     property string lastError: ""
 
     readonly property var stages: [
@@ -78,6 +78,7 @@ Singleton {
     property bool suspendPending: false
     property bool _desiredDisplaysOff: false
     property bool _displayCommandTargetOff: false
+    property bool _displayPowerBusy: false
     property var _savedBrightness: ({})
 
     signal operationStarted(string operation)
@@ -233,7 +234,26 @@ Singleton {
     function savePolicy() {
         if (!root.policyStoreReady || root.policyLoading)
             return;
-        policyFile.setText(JSON.stringify(root.policyJson(), null, 2));
+        ConfigService.updateSection("idle", root.policyJson());
+    }
+
+    function loadFromConfigStore() {
+        const idleData = ConfigService.getSection("idle", null);
+        if (idleData)
+            root.loadPolicy(idleData);
+        else
+            root.loadPolicy({});
+    }
+
+    Connections {
+        target: ConfigService
+        function onConfigLoaded() {
+            root.loadFromConfigStore();
+        }
+        function onSectionChanged(path, data) {
+            if (path === "idle")
+                root.loadFromConfigStore();
+        }
     }
 
     function _monitorEnabled(stageEnabled, timeout, respectInhibitors) {
@@ -293,16 +313,34 @@ Singleton {
 
     function _setDisplaysOff(value) {
         root._desiredDisplaysOff = !!value;
-        if (displayPowerProcess.running)
+        if (root._displayPowerBusy)
             return;
         if (root.displaysOff === root._desiredDisplaysOff)
             return;
 
         root._displayCommandTargetOff = root._desiredDisplaysOff;
         root.lastError = "";
+        const accepted = CompositorDriver.setMonitorsPower(root._displayCommandTargetOff, exitCode
+                                                           => root._finishDisplayPower(exitCode));
+        if (!accepted)
+            return;
+        root._displayPowerBusy = true;
         root.operationStarted(root._displayCommandTargetOff ? "display-off" : "display-on");
-        displayPowerProcess.exec(["niri", "msg", "action", root._displayCommandTargetOff
-                                  ? "power-off-monitors" : "power-on-monitors"]);
+    }
+
+    function _finishDisplayPower(exitCode) {
+        root._displayPowerBusy = false;
+        const operation = root._displayCommandTargetOff ? "display-off" : "display-on";
+        if (exitCode === 0) {
+            root.displaysOff = root._displayCommandTargetOff;
+            root.operationSucceeded(operation);
+        } else {
+            root.lastError = I18n.tr("Compositor display power action failed, exit code ") + exitCode;
+            root.operationFailed(operation, root.lastError);
+        }
+
+        if (root.displaysOff !== root._desiredDisplaysOff)
+            Qt.callLater(root._setDisplaysOff, root._desiredDisplaysOff);
     }
 
     function _requestSuspend() {
@@ -378,66 +416,9 @@ Singleton {
         }
     }
 
-    Process {
-        id: ensurePolicyStore
-
-        command: ["mkdir", "-p", root.policyConfigDir]
-        running: true
-        onExited: {
-            root.policyStoreReady = true;
-            policyFile.reload();
-        }
-    }
-
-    FileView {
-        id: policyFile
-
-        path: root.policyConfigPath
-        blockLoading: true
-        blockWrites: true
-        atomicWrites: true
-
-        onLoaded: {
-            let repair = false;
-            try {
-                const parsed = JSON.parse(policyFile.text().trim() || "{}");
-                repair = root.needsPolicyMigration(parsed);
-                root.loadPolicy(parsed);
-            } catch (error) {
-                console.warn("IdleService failed to load policy; leaving the existing file untouched:", error);
-                root.loadPolicy({});
-                repair = false;
-            }
-            if (repair)
-                root.savePolicy();
-        }
-
-        onLoadFailed: error => {
-            root.loadPolicy({});
-            if (error === FileViewError.FileNotFound)
-                root.savePolicy();
-            else
-                console.warn("IdleService could not read the policy; leaving the existing file untouched:", error);
-        }
-        onSaveFailed: error => console.warn("IdleService could not save the policy:", error)
-    }
-
-    Process {
-        id: displayPowerProcess
-
-        onExited: exitCode => {
-            const operation = root._displayCommandTargetOff ? "display-off" : "display-on";
-            if (exitCode === 0) {
-                root.displaysOff = root._displayCommandTargetOff;
-                root.operationSucceeded(operation);
-            } else {
-                root.lastError = I18n.tr("niri display power action failed, exit code ") + exitCode;
-                root.operationFailed(operation, root.lastError);
-            }
-
-            if (root.displaysOff !== root._desiredDisplaysOff)
-                Qt.callLater(root._setDisplaysOff, root._desiredDisplaysOff);
-        }
+    Component.onCompleted: {
+        if (ConfigService.storeReady)
+            root.loadFromConfigStore();
     }
 
     onInhibitedChanged: {
@@ -449,11 +430,9 @@ Singleton {
 
     Component.onDestruction: {
         root._setDimmed(false);
+        // No callback: the restore request must be detached so it survives
+        // this teardown (the host-owned managed channel dies with us).
         if (root.displaysOff)
-            ActionGateway.execute(["niri", "msg", "action", "power-on-monitors"], "idle:power-on");
-        if (displayPowerProcess)
-            displayPowerProcess.running = false;
-        if (ensurePolicyStore)
-            ensurePolicyStore.running = false;
+            CompositorDriver.setMonitorsPower(false);
     }
 }

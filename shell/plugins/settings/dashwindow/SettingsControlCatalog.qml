@@ -2,7 +2,6 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import qs.services
-import "../../wallpaper"
 import qs.commons.i18n
 
 // Control registry for the dashboard settings grid. Plays the role end4-pC's
@@ -110,6 +109,10 @@ Singleton {
                                                                                    => PersonalizationConfig.lyricAlbumArtTint,
                                                                                    value => PersonalizationConfig.setLyricAlbumArtTint(
                                                                                                 value)),
+                                         "lyrics:Show translation": root.toggle(()
+                                                                                => PersonalizationConfig.lyricShowTranslation,
+                                                                                value => PersonalizationConfig.setLyricShowTranslation(
+                                                                                             value)),
                                          "interface:Matugen scheme": root.select(()
                                                                                  => PersonalizationConfig.matugenScheme,
                                                                                  value => ThemeService.setMatugenScheme(
@@ -168,7 +171,7 @@ Singleton {
                                                                                                               value)),
                                          "wallpaper:Desktop transition": root.select(()
                                                                                      => PersonalizationConfig.wallpaperTransitionType,
-                                                                                     value => WallpaperService.setWallpaperTransitionType(
+                                                                                     value => PersonalizationConfig.setWallpaperTransitionType(
                                                                                                   value), PersonalizationConfig.transitionTypes),
                                          "wallpaper:Overview transition": root.select(()
                                                                                       => PersonalizationConfig.overviewTransitionType,
@@ -244,7 +247,7 @@ Singleton {
                                          // ── Bar ──────────────────────────────────────────────────────
                                          // Unit existence routes through the kernel verb (unit-model.md §6).
                                          "bar:Enabled": root.toggle(() => StateProjection.isEnabled("bar"),
-                                         value => UnitControlService.setUnit("bar", value)),
+                                         value => UnitControlService.setUnit("shell.bar", value)),
                                          "bar:Position": root.select(() => PersonalizationConfig.barPosition,
                                          value => PersonalizationConfig.setBarPosition(value),
                                          PersonalizationConfig.edgePositions),
@@ -264,7 +267,7 @@ Singleton {
                                          // private config field (unit-model.md §6).
                                          "keystone:Enabled": root.toggle(() => StateProjection.isEnabled(
                                                                                    "keystone"), value
-                                         => UnitControlService.setUnit("keystone", value)),
+                                         => UnitControlService.setUnit("shell.keystone", value)),
                                          "keystone:Style": root.select(()
                                                                        => PersonalizationConfig.keystoneStyle,
                                                                        value => PersonalizationConfig.setKeystoneStyle(
@@ -346,7 +349,7 @@ Singleton {
                                          // ── Wallpaper ────────────────────────────────────────────────
                                          "wallpaper:Fill mode": root.select(()
                                                                             => PersonalizationConfig.wallpaperFillMode,
-                                                                            value => WallpaperService.setWallpaperFillMode(
+                                                                            value => PersonalizationConfig.setWallpaperFillMode(
                                                                                          value), PersonalizationConfig.fillModes),
                                          "wallpaper:Auto cycle": root.toggle(()
                                                                              => PersonalizationConfig.autoCycleEnabled,
@@ -376,16 +379,16 @@ Singleton {
                                                                                      1440, 5),
                                          "wallpaper:Transition": root.select(()
                                                                              => PersonalizationConfig.wallpaperTransitionType,
-                                                                             value => WallpaperService.setWallpaperTransitionType(
+                                                                             value => PersonalizationConfig.setWallpaperTransitionType(
                                                                                           value), PersonalizationConfig.transitionTypes),
                                          "wallpaper:Transition duration (ms)": root.spin(()
                                                                                          => PersonalizationConfig.transitionDurationMs,
-                                                                                         value => WallpaperService.setTransitionDurationMs(
+                                                                                         value => PersonalizationConfig.setTransitionDurationMs(
                                                                                                       value), 100,
                                                                                          5000, 100),
                                          "wallpaper:Transition easing": root.select(()
                                                                                     => PersonalizationConfig.transitionEasingMode,
-                                                                                    value => WallpaperService.setTransitionEasingMode(
+                                                                                    value => PersonalizationConfig.setTransitionEasingMode(
                                                                                                  value), PersonalizationConfig.transitionEasingModes),
                                          "wallpaper:Overview": root.toggle(()
                                                                            => PersonalizationConfig.overviewEnabled,
@@ -584,8 +587,10 @@ Singleton {
 // ── Dock ─────────────────────────────────────────────────────
 // Unit existence routes through the kernel verb (unit-model.md §6).
 "dock:Show dock": root.toggle(() => StateProjection.isEnabled("dock"), value => UnitControlService.setUnit(
-                                                                                    "dock", value)),
-"dock:Screen edge": root.select(() => DockService.position, value => DockService.setOption("position", value),
+                                                                                    "shell.dock", value)),
+"dock:Screen edge": root.select(() => ActionGateway.dockHost ? ActionGateway.dockHost.position : "bottom", value => {
+    if (ActionGateway.dockHost) ActionGateway.dockHost.setOption("position", value);
+},
 [
 
     {
@@ -601,8 +606,9 @@ Singleton {
         "label": I18n.tr("Right")
     }
 ]),
-"dock:Surface style": root.select(() => DockService.surfaceStyle, value => DockService.setOption(
-                                                                               "surfaceStyle", value), [
+"dock:Surface style": root.select(() => ActionGateway.dockHost ? ActionGateway.dockHost.surfaceStyle : "default", value => {
+    if (ActionGateway.dockHost) ActionGateway.dockHost.setOption("surfaceStyle", value);
+}, [
     {
         "value": "default",
         "label": I18n.tr("Default")
@@ -612,30 +618,38 @@ Singleton {
         "label": I18n.tr("Notch")
     }
 ]),
-"dock:Icon size": root.slider(() => DockService.iconSize, value => DockService.setOption("iconSize", value),
+"dock:Icon size": root.slider(() => ActionGateway.dockHost ? ActionGateway.dockHost.iconSize : 48, value => {
+    if (ActionGateway.dockHost) ActionGateway.dockHost.setOption("iconSize", value);
+},
 24, 96, 1),
-"dock:Magnify on hover": root.toggle(() => DockService.magnification, value => DockService.setOption(
-                                                                                   "magnification", value)),
-"dock:Magnification": root.slider(() => DockService.magnificationScale, value => DockService.setOption(
-                                                                                     "magnificationScale",
-                                                                                     value), 1, 2.5, 0.05),
-"dock:Automatically hide": root.toggle(() => DockService.autoHide, value => DockService.setOption("autoHide",
-                                                                                                  value)),
-"dock:Bounce when launching": root.toggle(() => DockService.launchBounce, value => DockService.setOption(
-                                                                                       "launchBounce", value)),
-"dock:Show running indicators": root.toggle(() => DockService.showIndicators, value => DockService.setOption(
-                                                                                           "showIndicators",
-                                                                                           value)),
-"dock:Show recent applications": root.toggle(() => DockService.showRecent, value => DockService.setOption(
-                                                                                        "showRecent", value)),
-"dock:Show window thumbnails": root.toggle(() => DockService.showThumbnails, value => DockService.setOption(
-                                                                                          "showThumbnails",
-                                                                                          value)),
-"dock:Preview size": root.slider(() => DockService.previewSize, value => DockService.setOption("previewSize",
-                                                                                               value), 80, 400,
+"dock:Magnify on hover": root.toggle(() => ActionGateway.dockHost ? ActionGateway.dockHost.magnification : false, value => {
+    if (ActionGateway.dockHost) ActionGateway.dockHost.setOption("magnification", value);
+}),
+"dock:Magnification": root.slider(() => ActionGateway.dockHost ? ActionGateway.dockHost.magnificationScale : 1.5, value => {
+    if (ActionGateway.dockHost) ActionGateway.dockHost.setOption("magnificationScale", value);
+}, 1, 2.5, 0.05),
+"dock:Automatically hide": root.toggle(() => ActionGateway.dockHost ? ActionGateway.dockHost.autoHide : false, value => {
+    if (ActionGateway.dockHost) ActionGateway.dockHost.setOption("autoHide", value);
+}),
+"dock:Bounce when launching": root.toggle(() => ActionGateway.dockHost ? ActionGateway.dockHost.launchBounce : false, value => {
+    if (ActionGateway.dockHost) ActionGateway.dockHost.setOption("launchBounce", value);
+}),
+"dock:Show running indicators": root.toggle(() => ActionGateway.dockHost ? ActionGateway.dockHost.showIndicators : true, value => {
+    if (ActionGateway.dockHost) ActionGateway.dockHost.setOption("showIndicators", value);
+}),
+"dock:Show recent applications": root.toggle(() => ActionGateway.dockHost ? ActionGateway.dockHost.showRecent : false, value => {
+    if (ActionGateway.dockHost) ActionGateway.dockHost.setOption("showRecent", value);
+}),
+"dock:Show window thumbnails": root.toggle(() => ActionGateway.dockHost ? ActionGateway.dockHost.showThumbnails : false, value => {
+    if (ActionGateway.dockHost) ActionGateway.dockHost.setOption("showThumbnails", value);
+}),
+"dock:Preview size": root.slider(() => ActionGateway.dockHost ? ActionGateway.dockHost.previewSize : 180, value => {
+    if (ActionGateway.dockHost) ActionGateway.dockHost.setOption("previewSize", value);
+}, 80, 400,
 10),
-"dock:Pin applications from the menu": root.toggle(() => DockService.contextPinning, value
-=> DockService.setOption("contextPinning", value))
+"dock:Pin applications from the menu": root.toggle(() => ActionGateway.dockHost ? ActionGateway.dockHost.contextPinning : true, value => {
+    if (ActionGateway.dockHost) ActionGateway.dockHost.setOption("contextPinning", value);
+})
 })
 
 function controlFor(key) {

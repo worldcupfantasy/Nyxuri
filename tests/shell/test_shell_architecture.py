@@ -18,7 +18,7 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch, MagicMock
 
-from nyxuri.kernel.ledger import active_shell, custom_shell_bin, set_shell
+from nyxuri.state.store import active_shell, custom_shell_bin, set_shell
 from nyxuri.cli import _cmd_shell
 from tests.utils import TempEnv
 # Imports consolidated from the dissolved bugfix ledger.
@@ -41,15 +41,16 @@ class TestShellManagement(unittest.TestCase):
     def test_p2_layer_structure_and_session_decoupling(self):
         import os
         repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        # Verify 5-layer directories exist (S0-1)
-        self.assertTrue(os.path.isdir(os.path.join(repo_root, "shell", "app")))
+        # Verify 5-layer directories exist (P0 / Omarchy 5 layers: shell.qml, commons, ui, services, plugins)
+        self.assertFalse(os.path.exists(os.path.join(repo_root, "shell", "app")))
+        self.assertTrue(os.path.isfile(os.path.join(repo_root, "shell", "shell.qml")))
         self.assertTrue(os.path.isdir(os.path.join(repo_root, "shell", "commons")))
         self.assertTrue(os.path.isdir(os.path.join(repo_root, "shell", "ui")))
         self.assertTrue(os.path.isdir(os.path.join(repo_root, "shell", "services")))
         self.assertTrue(os.path.isdir(os.path.join(repo_root, "shell", "plugins", "session")))
 
         # Verify ActionGateway and SessionHost exist
-        self.assertTrue(os.path.isfile(os.path.join(repo_root, "shell", "app", "ActionGateway.qml")))
+        self.assertTrue(os.path.isfile(os.path.join(repo_root, "shell", "services", "ActionGateway.qml")))
         self.assertTrue(os.path.isfile(os.path.join(repo_root, "shell", "plugins", "session", "SessionHost.qml")))
         self.assertTrue(os.path.isfile(os.path.join(repo_root, "shell", "plugins", "session", "SessionPanel.qml")))
 
@@ -143,7 +144,7 @@ class TestShellManagement(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(shell_dir, "matugen")))
         self.assertFalse(os.path.exists(os.path.join(shell_dir, "assets", "matugen")))
         self.assertTrue(os.path.isdir(os.path.join(shell_dir, "commons", "i18n")))
-        self.assertTrue(os.path.isdir(os.path.join(shell_dir, "app", "templates")))
+        self.assertTrue(os.path.isdir(os.path.join(shell_dir, "commons", "assets", "templates")))
         self.assertTrue(os.path.isdir(os.path.join(shell_dir, "services")))
         self.assertTrue(os.path.isdir(os.path.join(shell_dir, "ui")))
         self.assertTrue(os.path.isfile(os.path.join(shell_dir, "ui", "CompositorBlurRegion.qml")))
@@ -164,9 +165,9 @@ class TestShellManagement(unittest.TestCase):
         self.assertNotIn("FALLBACK_QML_PATH", runner_txt)
         self.assertIn("${SHELL_DIR}/ui/shapes", runner_txt)
 
-        # 2. AppShell encapsulated in app/
-        self.assertFalse(os.path.exists(os.path.join(shell_dir, "AppShell.qml")))
-        self.assertTrue(os.path.isfile(os.path.join(shell_dir, "app", "AppShell.qml")))
+        # 2. Host skeleton in shell.qml; app/ physically eliminated
+        self.assertFalse(os.path.exists(os.path.join(shell_dir, "app")))
+        self.assertTrue(os.path.isfile(os.path.join(shell_dir, "shell.qml")))
 
         # 3. Capitalized Modules/ directory completely eliminated
         self.assertFalse(os.path.exists(os.path.join(shell_dir, "Modules")))
@@ -247,12 +248,13 @@ class TestShellManagement(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(shell_dir, "plugins", "dock", "DockHost.qml")))
         self.assertTrue(os.path.isfile(os.path.join(shell_dir, "plugins", "regionselector", "RegionSelector.qml")))
         self.assertTrue(os.path.isfile(os.path.join(shell_dir, "services", "HotCorners.qml")))
-        self.assertTrue(os.path.isfile(os.path.join(shell_dir, "archive", "settings", "displays", "DisplayOverlays.qml")))
+        archive_dir = os.path.join(repo_root, "llms-wiki", "archive", "shell")
+        self.assertTrue(os.path.isfile(os.path.join(archive_dir, "settings", "displays", "DisplayOverlays.qml")))
         self.assertTrue(os.path.isfile(os.path.join(shell_dir, "plugins", "sidebars", "SidebarHostWindow.qml")))
 
         # 2. NotificationContent and KeystoneSurface exist for native notification chain
         self.assertTrue(os.path.isfile(os.path.join(shell_dir, "plugins", "keystone", "styles", "shared", "KeystoneSurface.qml")))
-        self.assertTrue(os.path.isfile(os.path.join(shell_dir, "plugins", "notifications", "NotificationContent.qml")))
+        self.assertTrue(os.path.isfile(os.path.join(shell_dir, "services", "NotificationContent.qml")))
 
         # 3. Bar quicksettings controls exist
         self.assertTrue(os.path.isfile(os.path.join(shell_dir, "plugins", "bar", "quickpanel", "Volume.qml")))
@@ -272,7 +274,7 @@ class TestShellManagement(unittest.TestCase):
         #    (S0-2): a directory holding `pragma Singleton` files ships a
         #    singleton-only registry qmldir — implicit/relative resolution
         #    without it yields husk objects (loader-form.md 单例登记). The
-        #    singleton weld itself lives in shell/tests/test_plugin_manifests.
+        #    singleton weld itself lives in tests/shell/test_plugin_manifests.
         for qmldir in sorted((Path(shell_dir) / "plugins").rglob("qmldir")):
             with open(qmldir, "r", encoding="utf-8") as f:
                 for line in f:
@@ -282,12 +284,12 @@ class TestShellManagement(unittest.TestCase):
                             line.startswith("singleton "),
                             f"{qmldir} must stay a singleton-only registry: {line}")
 
-        # 3. pure-display layer strictly contains commons/ (cards + i18n + flat
+        # 3. pure-display layer strictly contains commons/ (assets + cards + i18n + flat
         # tokens/js) and ui/ (flat controls + shapes/); nothing else.
         commons_dir = os.path.join(shell_dir, "commons")
         commons_subdirs = sorted(e for e in os.listdir(commons_dir)
                                  if os.path.isdir(os.path.join(commons_dir, e)))
-        self.assertEqual(commons_subdirs, ["cards", "i18n"])
+        self.assertEqual(commons_subdirs, ["assets", "cards", "i18n"])
         ui_dir = os.path.join(shell_dir, "ui")
         ui_subdirs = sorted(e for e in os.listdir(ui_dir)
                             if os.path.isdir(os.path.join(ui_dir, e)))
@@ -334,7 +336,7 @@ class TestShellManagement(unittest.TestCase):
         shell_dir = os.path.join(repo_root, "shell")
 
         # 1. ActionGateway has settingsHost property and requestSettings* uses it
-        gw_path = os.path.join(shell_dir, "app", "ActionGateway.qml")
+        gw_path = os.path.join(shell_dir, "services", "ActionGateway.qml")
         with open(gw_path, "r", encoding="utf-8") as f:
             gw_content = f.read()
         self.assertIn("property var settingsHost: null", gw_content)
@@ -342,13 +344,13 @@ class TestShellManagement(unittest.TestCase):
 
         # 2. SettingsHost self-registers on the gateway (plugin-model.md §6):
         # the host reference exists exactly while the unit is loaded, and
-        # AppShell no longer wires it by id.
+        # shell.qml no longer wires it by id.
         sh_path = os.path.join(shell_dir, "plugins", "settings", "SettingsHost.qml")
         with open(sh_path, "r", encoding="utf-8") as f:
             sh_content = f.read()
         self.assertIn("ActionGateway.settingsHost = root", sh_content)
         self.assertIn("ActionGateway.settingsHost = null", sh_content)
-        app_path = os.path.join(shell_dir, "app", "AppShell.qml")
+        app_path = os.path.join(shell_dir, "shell.qml")
         with open(app_path, "r", encoding="utf-8") as f:
             app_content = f.read()
         self.assertNotIn("settingsHost =", app_content)
@@ -481,7 +483,7 @@ class TestShellManagement(unittest.TestCase):
         self.assertIn("NotificationService.hasNotifs", surface_content)
 
         # 2. NotificationContent provides ListView, sanitizedBody, normalActions, dismiss
-        notif_content = os.path.join(shell_dir, "plugins", "notifications", "NotificationContent.qml")
+        notif_content = os.path.join(shell_dir, "services", "NotificationContent.qml")
         with open(notif_content, "r", encoding="utf-8") as f:
             nc_content = f.read()
         self.assertIn("StyledListView {", nc_content)
@@ -556,9 +558,9 @@ class TestShellManagement(unittest.TestCase):
             self.assertTrue(os.path.isfile(os.path.join(cards_dir, card)), f"Lock card missing: {card}")
 
         # 3. Hot switch refuses to switch when screen is locked (K06 invariant)
-        from nyxuri.desktop.shell_switcher import hot_switch_shell, is_shell_locked
-        with patch("nyxuri.desktop.shell_switcher.is_shell_locked", return_value=True), \
-             patch("nyxuri.desktop.shell_switcher.probe_running_shells", return_value=[("nyxuri-shell", 9999)]), \
+        from nyxuri.system.shell import hot_switch_shell, is_shell_locked
+        with patch("nyxuri.system.shell.is_shell_locked", return_value=True), \
+             patch("nyxuri.system.shell.probe_running_shells", return_value=[("nyxuri-shell", 9999)]), \
              patch.dict(os.environ, {"WAYLAND_DISPLAY": "wayland-test"}):
             ok, msg = hot_switch_shell("noctalia")
             self.assertFalse(ok)
@@ -657,11 +659,12 @@ class TestShellManagement(unittest.TestCase):
 
         # 6. The popup:notification slot arbitrates keystone vs the standalone
         # popup host in the slot host (plugin-model.md §6, host-owned rule) —
-        # not a private config conditional in AppShell.
-        slot_path = os.path.join(shell_dir, "app", "SlotHost.qml")
+        # not a private config conditional. The rule is kind-keyed
+        # (S1-3): a third-party popup host yields exactly the same way.
+        slot_path = os.path.join(shell_dir, "shell.qml")
         with open(slot_path, "r", encoding="utf-8") as f:
             slot_content = f.read()
-        self.assertIn('unit.id === "notifications"', slot_content)
+        self.assertIn('unit.kind === "popup:notification"', slot_content)
         self.assertIn('StateProjection.isEnabled("keystone")', slot_content)
 
     def test_p3_r10_lifecycle_and_sideeffect_contracts(self):
@@ -681,18 +684,22 @@ class TestShellManagement(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, f"Lifecycle auditor failed: {proc.stdout}\n{proc.stderr}")
 
         # 2. ActionGateway is the single convergence point for execDetached
-        app_dir = os.path.join(shell_dir, "app")
         modules_dir = os.path.join(shell_dir, "plugins")
         display_dirs = [os.path.join(shell_dir, d) for d in ("commons", "ui")]
         service_dir = os.path.join(shell_dir, "services")
 
-        for scan_root in [app_dir, modules_dir, service_dir] + display_dirs:
+        for scan_root in [modules_dir, service_dir] + display_dirs:
             for root, _, files in os.walk(scan_root):
                 for file in files:
                     if file.endswith((".qml", ".js")):
                         full_p = os.path.join(root, file)
                         rel_p = os.path.relpath(full_p, shell_dir)
-                        if rel_p == "app/ActionGateway.qml":
+                        if rel_p == "services/ActionGateway.qml":
+                            continue
+                        # S0-5: the compositor driver is the sole argv truth
+                        # for the niri dialect; its exec calls are the
+                        # confined channel, not a gateway bypass.
+                        if rel_p == "services/NiriDriver.qml":
                             continue
                         with open(full_p, "r", encoding="utf-8") as f:
                             c = f.read()
@@ -835,15 +842,15 @@ class TestShellManagement(unittest.TestCase):
     def test_r2_startup_closure_and_lazy_hosts(self):
         """R2-01 Contract: Startup closure and lazy loading of heavy hosts.
 
-        KM4: lazy loading is slot-driven — AppShell instantiates zero units
-        by name; SlotHost owns one Loader per UnitCatalog row keyed by
+        KM4: lazy loading is slot-driven — shell.qml instantiates zero units
+        by name; the slot host owns one Loader per UnitCatalog row keyed by
         StateProjection (plugin-model.md §6).
         """
         repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         shell_dir = os.path.join(repo_root, "shell")
 
-        # 1. AppShell is the microkernel host: no unit instantiated by name.
-        app_file = os.path.join(shell_dir, "app", "AppShell.qml")
+        # 1. shell.qml is the microkernel host: no unit instantiated by name.
+        app_file = os.path.join(shell_dir, "shell.qml")
         with open(app_file, "r", encoding="utf-8") as f:
             app_content = f.read()
         for unit_component in ("LauncherHost {", "Lock {", "SessionHost {", "SettingsHost {",
@@ -851,12 +858,12 @@ class TestShellManagement(unittest.TestCase):
                                "WallpaperBackground {", "NotificationPopupHost {",
                                "DesktopCardHost {", "Bar {", "DockHost {"):
             self.assertNotIn(unit_component, app_content,
-                             f"unit must not be instantiated by name in AppShell: {unit_component}")
-        self.assertIn("SlotHost {", app_content)
+                             f"unit must not be instantiated by name in shell.qml: {unit_component}")
+        self.assertIn("ShellRoot {", app_content)
 
-        # 2. SlotHost: data-driven Loaders over the catalog, gated by the
+        # 2. Slot loading: data-driven Loaders over the catalog, gated by the
         # ledger projection.
-        slot_file = os.path.join(shell_dir, "app", "SlotHost.qml")
+        slot_file = os.path.join(shell_dir, "shell.qml")
         with open(slot_file, "r", encoding="utf-8") as f:
             slot_content = f.read()
         self.assertIn("Repeater", slot_content)
@@ -889,7 +896,7 @@ class TestShellManagement(unittest.TestCase):
         self.assertIn("active: RegionSelectionService.active", reg_content)
 
         # 6. DisplayOverlays markers and confirmation dialog gated
-        disp_file = os.path.join(shell_dir, "archive", "settings", "displays", "DisplayOverlays.qml")
+        disp_file = os.path.join(repo_root, "llms-wiki", "archive", "shell", "settings", "displays", "DisplayOverlays.qml")
         with open(disp_file, "r", encoding="utf-8") as f:
             disp_content = f.read()
         self.assertIn("model: DisplayConfigService.identify ? Quickshell.screens : []", disp_content)
@@ -935,7 +942,7 @@ class TestShellManagement(unittest.TestCase):
     def test_r2_lifecycle_exit_sigterm_and_crash_recovery(self):
         """R2-03 Contract: SIGTERM exit bounding, early crash detection, and rollback safety."""
         from unittest.mock import MagicMock, patch
-        from nyxuri.desktop.shell_switcher import wait_shell_ready, stop_shell_process, hot_switch_shell
+        from nyxuri.system.shell import wait_shell_ready, stop_shell_process, hot_switch_shell
 
         # 1. Early crash detection in wait_shell_ready: exits immediately if proc.poll() is not None
         mock_dead_proc = MagicMock()
@@ -955,11 +962,11 @@ class TestShellManagement(unittest.TestCase):
             mock_kill.assert_any_call(12345, signal.SIGTERM)
 
         # 3. Crash recovery rolls back ledger and restores old shell
-        with patch("nyxuri.desktop.shell_switcher.probe_running_shells", return_value=[("noctalia", 1111)]), \
-             patch("nyxuri.desktop.shell_switcher.stop_all_shell_instances", return_value=True), \
-             patch("nyxuri.desktop.shell_switcher.stop_shell_process", return_value=True), \
-             patch("nyxuri.desktop.shell_switcher.spawn_shell") as mock_spawn, \
-             patch("nyxuri.desktop.shell_switcher.wait_shell_ready") as mock_wait, \
+        with patch("nyxuri.system.shell.probe_running_shells", return_value=[("noctalia", 1111)]), \
+             patch("nyxuri.system.shell.stop_all_shell_instances", return_value=True), \
+             patch("nyxuri.system.shell.stop_shell_process", return_value=True), \
+             patch("nyxuri.system.shell.spawn_shell") as mock_spawn, \
+             patch("nyxuri.system.shell.wait_shell_ready") as mock_wait, \
              patch.dict(os.environ, {"WAYLAND_DISPLAY": "wayland-test"}):
             # Target shell fails to become ready; rollback restores noctalia
             mock_crashed = MagicMock()
@@ -995,7 +1002,7 @@ class TestShellManagement(unittest.TestCase):
         self.assertTrue(os.access(compile_script, os.X_OK))
 
         # 4. Paths.qml defaults configHome to nyxuri namespace
-        paths_file = os.path.join(shell_dir, "app", "Paths.qml")
+        paths_file = os.path.join(shell_dir, "services", "Paths.qml")
         with open(paths_file, "r", encoding="utf-8") as f:
             paths_content = f.read()
         self.assertIn('xdgConfigHome + "/nyxuri"', paths_content)
@@ -1098,12 +1105,8 @@ class TestShellManagement(unittest.TestCase):
         dashboard_file = os.path.join(shell_dir, "plugins", "sidebars", "dashboard", "DashboardSidebar.qml")
         with open(dashboard_file, "r", encoding="utf-8") as f:
             sidebar_content = f.read()
-            # DashboardSidebar legitimately requires the app services pool for
-            # FilePickerWindow (KM4.5: picker lives in app/services) and the
-            # wallpaper plugin for WallpaperColorPicker (S0-3a: the picker moved
-            # to its owning domain plugin; the settings import died with it).
-            # S0-2: plugin trees speak relative directory imports (loader-form rule 2).
-            self.assertIn('import "../../wallpaper"', sidebar_content, "DashboardSidebar needs wallpaper for WallpaperColorPicker")
+            # P2: DashboardSidebar severs static import of wallpaper, using dynamic Loader
+            self.assertNotIn('import "../../wallpaper"', sidebar_content, "DashboardSidebar must not statically import wallpaper")
             self.assertNotIn('import "../../settings"', sidebar_content, "DashboardSidebar must not import the settings aggregator")
             self.assertIn("import qs.services", sidebar_content, "DashboardSidebar needs app services for FilePickerWindow")
             self.assertNotIn("import qs.plugins.keystone", sidebar_content, "DashboardSidebar must not import keystone")
@@ -1129,9 +1132,8 @@ class TestShellManagement(unittest.TestCase):
         keystone_surface = os.path.join(shell_dir, "plugins", "keystone", "styles", "shared", "KeystoneSurface.qml")
         with open(keystone_surface, "r", encoding="utf-8") as f:
             keystone_content = f.read()
-            # S0-2: relative directory import into the notifications plugin
-            # (loader-form rule 2; the old module form is retired).
-            self.assertIn('import "../../../notifications"', keystone_content, "KeystoneSurface must import from the notifications plugin")
+            # P2: KeystoneSurface uses shared services/NotificationContent, severs cross-plugin import
+            self.assertNotIn('import "../../../notifications"', keystone_content, "KeystoneSurface must not statically import notifications")
             self.assertNotIn("import qs.plugins.keystone.notifications", keystone_content, "Legacy keystone.notifications import must be gone")
 
         # Keystone notifications directory must be removed to avoid duplication
@@ -1145,9 +1147,9 @@ class TestShellManagement(unittest.TestCase):
             btn_content = f.read()
             self.assertNotIn("import qs.services", btn_content, "ui/SplitMenuButton must be pure")
 
-        # 5. NotificationContent is in plugins/notifications/
-        notif_content = os.path.join(shell_dir, "plugins", "notifications", "NotificationContent.qml")
-        self.assertTrue(os.path.isfile(notif_content), "NotificationContent must exist in plugins/notifications")
+        # 5. NotificationContent is in services/
+        notif_content = os.path.join(shell_dir, "services", "NotificationContent.qml")
+        self.assertTrue(os.path.isfile(notif_content), "NotificationContent must exist in services/")
 
         # 6. Static audit tool passes with zero violations across entire tree
         import subprocess
@@ -1166,14 +1168,14 @@ class TestShellManagement(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(shell_dir, "wiki")), "shell/wiki must stay dissolved")
         self.assertFalse(os.path.exists(os.path.join(repo_root, "shell", "scripts", "dev", "generate-tree-inventory.py")))
 
-        # 2. Assert 12 single-module services relocated into their functional domains
+        # 2. Assert single-module services relocated into their functional domains / shared services
         migrated_services = [
             "plugins/launcher/FileSearchService.qml",
             "plugins/launcher/SpotlightSearchService.qml",
             "plugins/launcher/SpotlightToolService.qml",
             "plugins/keystone/tools/AudioRecordingService.qml",
             "plugins/keystone/tools/RecordingService.qml",
-            "plugins/keystone/media/MediaPalette.qml",
+            "services/MediaPalette.qml",
             "plugins/bar/tray/TrayService.qml",
             "plugins/sidebars/quicksettings/QuickToggleConfig.qml",
             "plugins/sidebars/dashboard/infotools/TodoService.qml",
@@ -1181,7 +1183,8 @@ class TestShellManagement(unittest.TestCase):
             "archive/settings/displays/DisplayConfigService.qml",
         ]
         for rel in migrated_services:
-            target_file = os.path.join(shell_dir, rel)
+            target_file = os.path.join(repo_root, "llms-wiki", "archive", "shell", rel[len("archive/"):]) \
+                if rel.startswith("archive/") else os.path.join(shell_dir, rel)
             self.assertTrue(os.path.isfile(target_file), f"Migrated service missing in domain: {target_file}")
 
         # KM4.5: systemcards demolished — its stateful network history singleton is a
@@ -1189,14 +1192,12 @@ class TestShellManagement(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(shell_dir, "services", "NetworkInterfaceHistoryService.qml")),
                         "NetworkInterfaceHistoryService must live in app/services after KM4.5")
 
-        # 3. Assert old app/services/ locations no longer exist
+        # 3. Assert old app/services/ locations no longer exist (excluding shared services)
         old_service_names = [
             "FileSearchService.qml",
-            "SpotlightSearchService.qml",
             "SpotlightToolService.qml",
             "AudioRecordingService.qml",
             "RecordingService.qml",
-            "MediaPalette.qml",
             "TrayService.qml",
             "QuickToggleConfig.qml",
             "TodoService.qml",
@@ -1242,9 +1243,9 @@ class TestShellManagement(unittest.TestCase):
         # fully replaced by the Noctalia-syntax builtin registry (P4).
         self.assertFalse(os.path.exists(os.path.join(shell_dir, "assets", "matugen")),
                          "the retired matugen Tera asset tree must stay deleted")
-        self.assertFalse(os.path.exists(os.path.join(shell_dir, "app", "templates", "cava-colors.ini")),
+        self.assertFalse(os.path.exists(os.path.join(shell_dir, "commons", "assets", "templates", "cava-colors.ini")),
                          "cava-colors.ini template must stay deleted")
-        with open(os.path.join(shell_dir, "app", "templates", "config.toml"), "r", encoding="utf-8") as f:
+        with open(os.path.join(shell_dir, "commons", "assets", "templates", "config.toml"), "r", encoding="utf-8") as f:
             registry_content = f.read()
         self.assertNotIn("cava", registry_content)
         self.assertNotIn("yazi", registry_content)
@@ -1314,19 +1315,20 @@ class TestShellManagement(unittest.TestCase):
         shell_dir = os.path.join(repo_root, "shell")
         services_dir = os.path.join(shell_dir, "services")
 
-        # 1. Assert 9 domain-specific files migrated into functional domains
+        # 1. Assert domain-specific and shared files migrated appropriately
         migrated_services = [
             "plugins/wallpaper/WallpaperService.qml",
             "plugins/wallpaper/WallpaperSceneService.qml",
             "plugins/wallpaper/WallpaperPaletteSession.qml",
             "plugins/desktopcards/DesktopPresentationService.qml",
-            "plugins/desktopcards/SystemCardDragSession.qml",
-            "plugins/desktopcards/SystemCardDragState.js",
+            "services/SystemCardDragSession.qml",
+            "commons/cards/SystemCardDragState.js",
             "plugins/sidebars/dashboard/infotools/TimerService.qml",
             "plugins/sidebars/dashboard/infotools/InfoDrawerState.qml",
         ]
         for rel in migrated_services:
-            target_file = os.path.join(shell_dir, rel)
+            target_file = os.path.join(repo_root, "llms-wiki", "archive", "shell", rel[len("archive/"):]) \
+                if rel.startswith("archive/") else os.path.join(shell_dir, rel)
             self.assertTrue(os.path.isfile(target_file), f"Migrated service missing in domain: {target_file}")
         self.assertFalse(os.path.exists(os.path.join(shell_dir, "plugins", "wallpaper", "AwwwWallpaperService.qml")),
                          "AwwwWallpaperService.qml must be deleted")
@@ -1338,7 +1340,6 @@ class TestShellManagement(unittest.TestCase):
             "WallpaperPaletteSession.qml",
             "AwwwWallpaperService.qml",
             "DesktopPresentationService.qml",
-            "SystemCardDragSession.qml",
             "SystemCardDragState.js",
             "TimerService.qml",
             "InfoDrawerState.qml",
@@ -1347,17 +1348,11 @@ class TestShellManagement(unittest.TestCase):
             old_file = os.path.join(services_dir, name)
             self.assertFalse(os.path.exists(old_file), f"Old service duplicate must not exist in app/services: {old_file}")
 
-        # 3. Assert app/ is pure assembly after S0-2: exactly the five host
-        # files (AppShell/SlotHost/Paths/WidgetState/ActionGateway — the
-        # UnitCatalog mirror retired with the runtime plugin registry).
-        # The former services/cards/i18n payload now lives in services/ and
-        # commons/; icons/ and templates/ stay as host data.
-        app_files = []
-        for root_dir, _, files in os.walk(os.path.join(shell_dir, "app")):
-            for f in files:
-                if f.endswith((".qml", ".js")):
-                    app_files.append(os.path.join(root_dir, f))
-        self.assertEqual(len(app_files), 5, f"app/ must strictly contain 5 files, found {len(app_files)}: {app_files}")
+        # 3. Assert app/ is physically dissolved after P0:
+        # shell.qml is the sole host skeleton; singletons moved to services/
+        # and assets moved to commons/assets/.
+        self.assertFalse(os.path.exists(os.path.join(shell_dir, "app")),
+                         "app/ must be physically deleted under Omarchy 5-layer architecture")
 
         # 5. Static lifecycle audit passes clean with zero violations
         import subprocess
@@ -1368,30 +1363,101 @@ class TestShellManagement(unittest.TestCase):
         self.assertIn("lifecycle-audit: clean", audit_res.stdout)
 
     def test_r4c_niri_single_runtime_entry(self):
-        """R4-C-02: Assert NiriService is the sole runtime IPC entry point and no Clavis.Niri imports remain in QML."""
+        """R4-C-02 (S0-5 form): CompositorDriver is the sole compositor surface;
+        NiriDriver is the only live file allowed to speak niri's dialect."""
         repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         shell_dir = os.path.join(repo_root, "shell")
-        niri_service_path = os.path.join(shell_dir, "services", "NiriService.qml")
-        self.assertTrue(os.path.isfile(niri_service_path), f"NiriService.qml must exist at {niri_service_path}")
+        driver_path = os.path.join(shell_dir, "services", "NiriDriver.qml")
+        surface_path = os.path.join(shell_dir, "services", "CompositorDriver.qml")
+        self.assertTrue(os.path.isfile(driver_path), f"NiriDriver.qml must exist at {driver_path}")
+        self.assertTrue(os.path.isfile(surface_path), f"CompositorDriver.qml must exist at {surface_path}")
 
-        with open(niri_service_path, "r", encoding="utf-8") as f:
-            niri_service_content = f.read()
+        with open(driver_path, "r", encoding="utf-8") as f:
+            driver_content = f.read()
+        with open(surface_path, "r", encoding="utf-8") as f:
+            surface_content = f.read()
 
-        # 1. Assert NiriService contract invariants
-        self.assertIn("pragma Singleton", niri_service_content)
-        self.assertIn("Component.onDestruction", niri_service_content)
-        self.assertIn("eventStreamSocket", niri_service_content)
-        self.assertIn("requestSocket", niri_service_content)
-        self.assertIn("fetchOutputsProcess", niri_service_content)
-        self.assertIn("workspacesModel", niri_service_content)
-        self.assertIn("property var outputs:", niri_service_content)
-        self.assertIn("property var windows:", niri_service_content)
-        self.assertIn("supportsMinimize: false", niri_service_content)
-        self.assertIn("supportsMinimizeAnimation: false", niri_service_content)
+        # 1. Driver contract invariants: the niri dialect (socket env, argv)
+        # and the IPC machinery are confined to this one file.
+        self.assertIn("pragma Singleton", driver_content)
+        self.assertIn("Component.onDestruction", driver_content)
+        self.assertIn("eventStreamSocket", driver_content)
+        self.assertIn("requestSocket", driver_content)
+        self.assertIn("fetchOutputsProcess", driver_content)
+        self.assertIn("workspacesModel", driver_content)
+        self.assertIn("property var outputs:", driver_content)
+        self.assertIn("property var windows:", driver_content)
+        self.assertIn("property string currentOutput:", driver_content)
+        self.assertIn("supportsMinimize: false", driver_content)
+        self.assertIn("supportsMinimizeAnimation: false", driver_content)
+        self.assertIn('Quickshell.env("NIRI_SOCKET")', driver_content)
+        self.assertIn("setMonitorsPower", driver_content)
+        self.assertIn("quitSession", driver_content)
 
-        # 2. Assert zero imports of Clavis.Niri in app/, plugins/, commons/ui
+        # 2. Surface contract: the singleton facade projects the driver and
+        # carries no niri dialect of its own.
+        self.assertIn("pragma Singleton", surface_content)
+        self.assertIn("NiriDriver.isNiri", surface_content)
+        self.assertNotIn("niri msg", surface_content)
+        self.assertNotIn("NIRI_SOCKET", surface_content)
+        self.assertIn("readonly property bool available:", surface_content)
+        self.assertIn("function quitSession()", surface_content)
+        self.assertIn("function setMonitorsPower(", surface_content)
+
+        # 2a. Only the surface may reference the driver (single dial point).
+        driver_referrers = []
+        for scope_dir in ["plugins", "services", "ui", "commons"]:
+            target_path = os.path.join(shell_dir, scope_dir)
+            for root_dir, _, files in os.walk(target_path):
+                for f in files:
+                    if not f.endswith((".qml", ".js")):
+                        continue
+                    full_path = os.path.join(root_dir, f)
+                    rel = os.path.relpath(full_path, shell_dir)
+                    if rel in ("services/NiriDriver.qml", "services/CompositorDriver.qml"):
+                        continue
+                    with open(full_path, "r", encoding="utf-8") as qml_f:
+                        if "NiriDriver" in qml_f.read():
+                            driver_referrers.append(rel)
+        self.assertEqual(driver_referrers, [], f"Only CompositorDriver may reach the driver: {driver_referrers}")
+
+        # 2b. S0-5 death sentence: the NiriService name must stay dead across
+        # the live tree (references/ is a read-only upstream mirror).
+        stragglers = []
+        for scope_dir in ["plugins", "services", "ui", "commons"]:
+            target_path = os.path.join(shell_dir, scope_dir)
+            for root_dir, _, files in os.walk(target_path):
+                for f in files:
+                    if not f.endswith((".qml", ".js")):
+                        continue
+                    full_path = os.path.join(root_dir, f)
+                    with open(full_path, "r", encoding="utf-8") as qml_f:
+                        if "NiriService" in qml_f.read():
+                            stragglers.append(os.path.relpath(full_path, shell_dir))
+        self.assertEqual(stragglers, [], f"NiriService must not resurface: {stragglers}")
+
+        # 2c. niri argv literals are driver-only in QML. (The Python config
+        # tools scripts/system/niri_config.py + display_preview.py are the
+        # registered exception: compositor config management, not runtime.)
+        argv_offenders = []
+        for scope_dir in ["plugins", "services", "ui", "commons"]:
+            target_path = os.path.join(shell_dir, scope_dir)
+            for root_dir, _, files in os.walk(target_path):
+                for f in files:
+                    if not f.endswith((".qml", ".js")):
+                        continue
+                    full_path = os.path.join(root_dir, f)
+                    rel = os.path.relpath(full_path, shell_dir)
+                    if rel == "services/NiriDriver.qml":
+                        continue
+                    with open(full_path, "r", encoding="utf-8") as qml_f:
+                        if '["niri"' in qml_f.read():
+                            argv_offenders.append(rel)
+        self.assertEqual(argv_offenders, [], f"niri argv belongs to NiriDriver only: {argv_offenders}")
+
+        # 3. Assert zero imports of Clavis.Niri across the live layers
         violating_files = []
-        for scope_dir in ["app", "plugins", "shared"]:
+        for scope_dir in ["plugins", "services", "commons", "ui"]:
             target_path = os.path.join(shell_dir, scope_dir)
             for root_dir, _, files in os.walk(target_path):
                 for f in files:
@@ -1402,27 +1468,28 @@ class TestShellManagement(unittest.TestCase):
                             if "import Clavis.Niri" in content:
                                 violating_files.append(os.path.relpath(full_path, shell_dir))
 
-        self.assertEqual(violating_files, [], f"No QML file in app/, plugins/, commons/ui may import Clavis.Niri: {violating_files}")
+        self.assertEqual(violating_files, [], f"No QML file may import Clavis.Niri: {violating_files}")
 
-        # 3. Assert former consumers reference NiriService
+        # 4. Assert former consumers reference CompositorDriver
         consumer_samples = [
-            ("app/AppShell.qml", "NiriService"),
-            ("services/DockService.qml", "NiriService"),
-            ("plugins/bar/workspaces/Workspaces.qml", "NiriService"),
-            ("plugins/bar/activewindow/ActiveWindow.qml", "NiriService"),
-            ("plugins/dock/DockSurface.qml", "NiriService"),
-            ("services/HotCorners.qml", "NiriService"),
-            ("archive/settings/displays/DisplayConfigService.qml", "NiriService"),
-            ("plugins/wallpaper/WallpaperSceneService.qml", "NiriService"),
+            ("shell.qml", "CompositorDriver"),
+            ("plugins/dock/DockService.qml", "CompositorDriver"),
+            ("plugins/bar/workspaces/Workspaces.qml", "CompositorDriver"),
+            ("plugins/bar/activewindow/ActiveWindow.qml", "CompositorDriver"),
+            ("plugins/dock/DockSurface.qml", "CompositorDriver"),
+            ("services/HotCorners.qml", "CompositorDriver"),
+            ("archive/settings/displays/DisplayConfigService.qml", "CompositorDriver"),
+            ("plugins/wallpaper/WallpaperSceneService.qml", "CompositorDriver"),
         ]
         for rel_path, pattern in consumer_samples:
-            target_f = os.path.join(shell_dir, rel_path)
+            target_f = os.path.join(repo_root, "llms-wiki", "archive", "shell", rel_path[len("archive/"):]) \
+                if rel_path.startswith("archive/") else os.path.join(shell_dir, rel_path)
             self.assertTrue(os.path.isfile(target_f), f"Consumer {rel_path} must exist")
             with open(target_f, "r", encoding="utf-8") as cf:
                 self.assertIn(pattern, cf.read(), f"{rel_path} must reference {pattern}")
 
-        # 4. Assert ROADMAP status updated
-        roadmap_path = os.path.join(shell_dir, "ROADMAP.md")
+        # 5. Assert ROADMAP status updated
+        roadmap_path = os.path.join(repo_root, "shell", "ROADMAP.md")
         with open(roadmap_path, "r", encoding="utf-8") as rf:
             roadmap_content = rf.read()
         self.assertIn("| R4-C | 结构收敛与全面去 C++ | 已完成 |", roadmap_content)
@@ -1486,8 +1553,9 @@ class TestShellManagement(unittest.TestCase):
         repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         shell_dir = os.path.join(repo_root, "shell")
 
-        # 1. NiriService is the sole runtime entry for Niri state & IPC
-        niri_service_path = os.path.join(shell_dir, "services", "NiriService.qml")
+        # 1. The compositor driver is the sole runtime entry for compositor
+        # state & IPC (S0-5: NiriDriver behind the CompositorDriver surface)
+        niri_service_path = os.path.join(shell_dir, "services", "NiriDriver.qml")
         self.assertTrue(os.path.isfile(niri_service_path))
         with open(niri_service_path, "r", encoding="utf-8") as f:
             ns_content = f.read()
@@ -1519,7 +1587,7 @@ class TestShellManagement(unittest.TestCase):
                     self.assertNotIn("import Clavis", code, f"{file} must not import Clavis")
 
         # 4. Roadmap status reflects R4-C-05 and R4-C-06 completion
-        roadmap_path = os.path.join(shell_dir, "ROADMAP.md")
+        roadmap_path = os.path.join(repo_root, "shell", "ROADMAP.md")
         with open(roadmap_path, "r", encoding="utf-8") as rf:
             roadmap_content = rf.read()
         self.assertIn("| R4-C | 结构收敛与全面去 C++ | 已完成 |", roadmap_content)
@@ -1547,7 +1615,7 @@ class TestShellManagement(unittest.TestCase):
 
         # 2. Dead icons and orphaned SvgIcon.qml eliminated
         for dead_icon in ["play.svg", "pause.svg", "previous.svg", "next.svg"]:
-            self.assertFalse(os.path.exists(os.path.join(shell_dir, "app", "icons", dead_icon)))
+            self.assertFalse(os.path.exists(os.path.join(shell_dir, "commons", "assets", "icons", dead_icon)))
         self.assertFalse(os.path.exists(os.path.join(shell_dir, "ui", "SvgIcon.qml")))
 
         # 3. Conflicting upstream docs removed
@@ -1574,7 +1642,7 @@ class TestShellManagement(unittest.TestCase):
         self.assertTrue(os.access(run_tests, os.X_OK))
 
         # 7. Roadmap status reflects R5 completion
-        roadmap_path = os.path.join(shell_dir, "ROADMAP.md")
+        roadmap_path = os.path.join(repo_root, "shell", "ROADMAP.md")
         with open(roadmap_path, "r", encoding="utf-8") as rf:
             roadmap_content = rf.read()
         self.assertIn("| R5 | 资源、文档与测试收口 | 已完成 |", roadmap_content)
@@ -1586,7 +1654,7 @@ class TestShellManagement(unittest.TestCase):
         shell_dir = os.path.join(repo_root, "shell")
 
         # 1. Weather Icon Subtraction (R6-01): 48.5MB meteocons bloat eliminated
-        meteocons_dir = os.path.join(shell_dir, "app", "icons", "weather", "meteocons")
+        meteocons_dir = os.path.join(shell_dir, "commons", "assets", "icons", "weather", "meteocons")
         self.assertFalse(os.path.exists(meteocons_dir), "meteocons directory must be physically eliminated")
 
         # KM4.6: packaging/ executed — meteocons subtraction contract is pinned by
@@ -1601,7 +1669,7 @@ class TestShellManagement(unittest.TestCase):
         self.assertNotIn("Qt.labs.lottieqt", meteo_code)
         self.assertNotIn("meteoconSvg", meteo_code)
 
-        paths_qml_path = os.path.join(shell_dir, "app", "Paths.qml")
+        paths_qml_path = os.path.join(shell_dir, "services", "Paths.qml")
         with open(paths_qml_path, "r", encoding="utf-8") as f:
             paths_code = f.read()
         self.assertNotIn("meteoconsDir", paths_code)
@@ -1679,7 +1747,7 @@ class TestShellManagement(unittest.TestCase):
                     self.assertLessEqual(destruction_count, 1, f"Duplicate Component.onDestruction in {full_p}")
 
         # 4. Roadmap status reflects R6 completion
-        roadmap_path = os.path.join(shell_dir, "ROADMAP.md")
+        roadmap_path = os.path.join(repo_root, "shell", "ROADMAP.md")
         with open(roadmap_path, "r", encoding="utf-8") as rf:
             roadmap_content = rf.read()
         self.assertIn("| R6 | 能耗基线、事件循环与稳态治理 | 已完成 |", roadmap_content)
@@ -1690,21 +1758,21 @@ class TestShellManagement(unittest.TestCase):
         repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         shell_dir = os.path.join(repo_root, "shell")
 
-        # 1. Slot-driven existence: unit gates live in SlotHost keyed by the
-        # ledger projection; AppShell holds no per-unit conditionals and no
+        # 1. Slot-driven existence: unit gates live in shell.qml keyed by the
+        # ledger projection; shell.qml holds no per-unit conditionals and no
         # private config switches (plugin-model.md §6).
-        app_path = os.path.join(shell_dir, "app", "AppShell.qml")
+        app_path = os.path.join(shell_dir, "shell.qml")
         with open(app_path, "r", encoding="utf-8") as f:
             app_code = f.read()
         self.assertIn("active: ShortcutMapService.visible", app_code)
         self.assertNotIn("PersonalizationConfig.barEnabled", app_code)
         self.assertNotIn("DockService.enabled", app_code)
         self.assertNotIn("keystoneEnabled", app_code)
-        slot_path = os.path.join(shell_dir, "app", "SlotHost.qml")
+        slot_path = os.path.join(shell_dir, "shell.qml")
         with open(slot_path, "r", encoding="utf-8") as f:
             slot_code = f.read()
-        self.assertIn("StateProjection.isEnabled(unit.id)", slot_code)
-        self.assertIn("active: root.slotActive(modelData)", slot_code)
+        self.assertIn("StateProjection.isEnabledUnit(unit.unitId)", slot_code)
+        self.assertIn("StateProjection.primed && root.slotActive(modelData)", slot_code)
 
         # 2. Layer-shell surfaces physically unmount when disabled or inactive
         ov_path = os.path.join(shell_dir, "plugins", "wallpaper", "OverviewWallpaper.qml")
@@ -1731,13 +1799,13 @@ class TestShellManagement(unittest.TestCase):
         self.assertIn("model: RegionSelectionService.active ? Quickshell.screens : []", rs_code)
 
         # 3. DockService guards work and connections when disabled
-        dock_path = os.path.join(shell_dir, "services", "DockService.qml")
+        dock_path = os.path.join(shell_dir, "plugins", "dock", "DockService.qml")
         with open(dock_path, "r", encoding="utf-8") as f:
             dock_code = f.read()
         self.assertIn("if (!root.enabled) {", dock_code)
         self.assertIn("entries.clear();", dock_code)
         self.assertIn("launchTimeout.stop();", dock_code)
-        self.assertIn("target: root.enabled ? NiriService : null", dock_code)
+        self.assertIn("target: root.enabled ? CompositorDriver : null", dock_code)
         self.assertIn("target: root.enabled ? ApplicationService : null", dock_code)
         self.assertIn("target: root.enabled ? SpotlightAppUsage : null", dock_code)
 
@@ -1749,13 +1817,14 @@ class TestShellManagement(unittest.TestCase):
         self.assertIn("target: Quickshell", ws_code)
         self.assertIn("Component.onDestruction:", ws_code)
 
-        disp_path = os.path.join(shell_dir, "archive", "settings", "displays", "DisplayConfigService.qml")
+        archive_dir = os.path.join(repo_root, "llms-wiki", "archive", "shell")
+        disp_path = os.path.join(archive_dir, "settings", "displays", "DisplayConfigService.qml")
         with open(disp_path, "r", encoding="utf-8") as f:
             disp_code = f.read()
         self.assertIn("function cancelPreview()", disp_code)
         self.assertIn("identifyTimer.stop();", disp_code)
 
-        auto_path = os.path.join(shell_dir, "archive", "settings", "autostart", "AutostartService.qml")
+        auto_path = os.path.join(archive_dir, "settings", "autostart", "AutostartService.qml")
         with open(auto_path, "r", encoding="utf-8") as f:
             auto_code = f.read()
         self.assertIn("property var deleteProcess: null", auto_code)
@@ -1770,7 +1839,7 @@ class TestShellManagement(unittest.TestCase):
         self.assertIn("SettingsSearch.cancelSearch();", sb_code)
 
         # 5. Roadmap reflects R9 completion
-        roadmap_path = os.path.join(shell_dir, "ROADMAP.md")
+        roadmap_path = os.path.join(repo_root, "shell", "ROADMAP.md")
         with open(roadmap_path, "r", encoding="utf-8") as f:
             roadmap_code = f.read()
         self.assertIn("| R9 | 功能开关与真实生命周期 | 已完成 |", roadmap_code)
@@ -1790,25 +1859,30 @@ class TestShellManagement(unittest.TestCase):
         shell_dir = os.path.join(repo_root, "shell")
 
         def read(rel):
-            with open(os.path.join(shell_dir, rel), "r", encoding="utf-8") as f:
+            target = os.path.join(shell_dir, rel)
+            if rel == "ROADMAP.md" and not os.path.exists(target):
+                target = os.path.join(repo_root, "shell", "ROADMAP.md")
+            with open(target, "r", encoding="utf-8") as f:
                 return f.read()
 
         # 1. ActionGateway: result semantics documented, dead signal removed,
         # argument shape validation in place.
-        gw = read("app/ActionGateway.qml")
+        gw = read("services/ActionGateway.qml")
         self.assertNotIn("actionDispatched", gw)
         self.assertIn("dispatch accepted", gw)
         self.assertIn("Array.isArray(args)", gw)
         self.assertIn("pendingSecurePowerAction", gw)
 
-        # 2. AppShell: microkernel assembly + generic IPC only. Unit-owned
+        # 2. shell.qml: microkernel assembly + generic IPC only. Unit-owned
         # targets (lock / spotlight / power-menu / control-center / settings)
         # moved into their unit roots; the kernel's unit-changed event lands
         # on the host's `unit` target. Gateway-owned search intents delegate
-        # to ActionGateway.executeIntent.
-        app = read("app/AppShell.qml")
+        # to ActionGateway.executeIntent. Wallpaper catalog intents delegate via
+        # ActionGateway.wallpaperHost without static cross-plugin coupling.
+        app = read("shell.qml")
         self.assertNotIn("pendingCycleAction", app)
-        self.assertIn("WallpaperService.runCatalogAction(action.method)", app)
+        self.assertIn("ActionGateway.wallpaperHost.runCatalogAction(action.method)", app)
+        self.assertNotIn('import "plugins/wallpaper"', app)
         self.assertIn("ActionGateway.executeIntent(action)", app)
         self.assertIn("ActionGateway.requestSidebarOpenOnScreen", app)
         self.assertNotIn('target: "lock"', app)
@@ -1864,8 +1938,7 @@ class TestShellManagement(unittest.TestCase):
         # 6. LIFE008 registered with allowlist; auditor stays green.
         audit_src = read("scripts/dev/audit-lifecycle.py")
         self.assertIn("LIFE008", audit_src)
-        for allowlisted in ("plugins/lock/Lock.qml", "plugins/lock/PreLockCapture.qml",
-                            "plugins/keystone/media/MediaPalette.qml"):
+        for allowlisted in ("plugins/lock/Lock.qml", "plugins/lock/PreLockCapture.qml"):
             self.assertIn(allowlisted, audit_src)
 
         # 7. Dock force-quit is a gateway action, not a popup-owned Process.
@@ -1903,7 +1976,10 @@ class TestShellManagement(unittest.TestCase):
         shell_dir = os.path.join(repo_root, "shell")
 
         def read(rel):
-            with open(os.path.join(shell_dir, rel), "r", encoding="utf-8") as f:
+            target = os.path.join(shell_dir, rel)
+            if rel == "ROADMAP.md" and not os.path.exists(target):
+                target = os.path.join(repo_root, "shell", "ROADMAP.md")
+            with open(target, "r", encoding="utf-8") as f:
                 return f.read()
 
         # 1. Route registration: top-level manifest entry, nav auto-derives
@@ -1965,17 +2041,17 @@ class TestShellManagement(unittest.TestCase):
         prefs = read("services/UiPreferences.qml")
         self.assertIn("property bool controlPlaneResourceSampling: false", prefs)
         self.assertIn("function setControlPlaneResourceSampling(", prefs)
-        self.assertIn('"controlPlaneResourceSampling": root.controlPlaneResourceSampling', prefs)
+        self.assertIn('controlPlaneResourceSampling: root.controlPlaneResourceSampling', prefs)
         self.assertIn("root.controlPlaneResourceSampling = parsed.controlPlaneResourceSampling === true;",
                       prefs)
 
         # 6. Compositor reconnection is publicly visible and recoverable.
-        niri = read("services/NiriService.qml")
+        niri = read("services/NiriDriver.qml")
         self.assertIn("readonly property bool reconnecting: reconnectTimer.running", niri)
         self.assertIn("function reconnect()", niri)
 
-        # 7. IPC diagnostics() delegates; the AppShell stays a thin assembler.
-        app = read("app/AppShell.qml")
+        # 7. IPC diagnostics() delegates; shell.qml stays a thin assembler.
+        app = read("shell.qml")
         self.assertIn("function diagnostics(): string", app)
         self.assertIn("return ShellControlService.diagnosticsJson();", app)
         self.assertNotIn("JSON.stringify(ShellControlService.buildDiagnostics()", app)
@@ -2032,7 +2108,7 @@ class TestShellManagement(unittest.TestCase):
         self.assertIn("root.close();", host_content)
 
         # 3. ActionGateway uses systemctl for power actions and requests session close
-        gateway_path = os.path.join(shell_dir, "app", "ActionGateway.qml")
+        gateway_path = os.path.join(shell_dir, "services", "ActionGateway.qml")
         with open(gateway_path, "r", encoding="utf-8") as f:
             gateway_content = f.read()
         self.assertIn('root.execute(["systemctl", action], "session:secure-power")', gateway_content)
@@ -2054,7 +2130,7 @@ class TestShellManagement(unittest.TestCase):
         self.assertNotIn("suspendProcess", idle_content)
         self.assertIn("signal suspendRequested", idle_content)
         self.assertIn("function reportSuspendResult", idle_content)
-        app_shell_path = os.path.join(shell_dir, "app", "AppShell.qml")
+        app_shell_path = os.path.join(shell_dir, "shell.qml")
         with open(app_shell_path, "r", encoding="utf-8") as f:
             app_shell_content = f.read()
         self.assertIn("onSuspendRequested", app_shell_content)

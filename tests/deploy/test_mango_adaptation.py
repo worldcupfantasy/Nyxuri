@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from nyxuri.core import get_env
+from nyxuri.system.env import get_env
 from nyxuri.deploy.manifest import discover_deployable_apps, discover_optional_apps, load_manifest
 from nyxuri.deploy.templates import _phase_render_templates
 from tests.utils import TempEnv
@@ -78,7 +78,7 @@ class TestMangoAdaptation(unittest.TestCase):
 
     def test_theme_sync_calls_mmsg_reload(self):
         """Theme sync should dispatch mmsg reload_config when mmsg is available."""
-        from nyxuri.desktop.theme import sync
+        from nyxuri.system.theme import sync
 
         calls = []
 
@@ -91,8 +91,8 @@ class TestMangoAdaptation(unittest.TestCase):
                 return "/usr/bin/mmsg"
             return None
 
-        with patch("nyxuri.desktop.theme.timed_run", side_effect=fake_timed_run), \
-             patch("nyxuri.desktop.theme.shutil.which", side_effect=fake_which):
+        with patch("nyxuri.system.theme.timed_run", side_effect=fake_timed_run), \
+             patch("nyxuri.system.theme.shutil.which", side_effect=fake_which):
             sync("dark")
 
         self.assertIn(["mmsg", "dispatch", "reload_config"], calls)
@@ -102,7 +102,7 @@ class TestMangoAdaptation(unittest.TestCase):
         from io import StringIO
         import contextlib
         import os
-        from nyxuri.sysdoctor import _check_compositor
+        from nyxuri.system.doctor import _check_compositor
 
         buf = StringIO()
         with patch.dict(os.environ, {"XDG_CURRENT_DESKTOP": "mango"}), \
@@ -116,7 +116,7 @@ class TestMangoAdaptation(unittest.TestCase):
     def test_detect_preferred_wm(self):
         """detect_preferred_wm returns running desktop or fallback."""
         import os
-        from nyxuri.core import detect_preferred_wm
+        from nyxuri.system.compositors import detect_preferred_wm
 
         with patch.dict(os.environ, {"XDG_CURRENT_DESKTOP": "mango"}):
             self.assertEqual(detect_preferred_wm(), "mango")
@@ -124,10 +124,42 @@ class TestMangoAdaptation(unittest.TestCase):
         with patch.dict(os.environ, {"XDG_CURRENT_DESKTOP": "niri"}):
             self.assertEqual(detect_preferred_wm(), "niri")
 
+    def test_compositor_registry_contract(self):
+        """S0-5: WM membership reads the registry, no scattered tuples.
+
+        The registry is the single place that knows which compositors
+        exist; doctor/menus/workflows must not re-hardcode the pair.
+        """
+        from nyxuri.system.compositors import COMPOSITORS, MAIN_WM, portal_conf_name, session_wm
+
+        self.assertEqual(set(COMPOSITORS), {"niri", "mango"})
+        self.assertEqual(MAIN_WM, "niri")
+        # Reload argv: parameter arrays, niri speaks niri msg, mango mmsg.
+        self.assertEqual(COMPOSITORS["niri"].reload_argv,
+                         ("niri", "msg", "action", "load-config-file"))
+        self.assertEqual(COMPOSITORS["mango"].reload_argv,
+                         ("mmsg", "dispatch", "reload_config"))
+        # Portal routing: known session -> own conf, unknown -> main.
+        self.assertEqual(portal_conf_name("mango"), "mango-portals.conf")
+        self.assertEqual(portal_conf_name("niri"), "niri-portals.conf")
+        self.assertEqual(portal_conf_name("sway"), "niri-portals.conf")
+        self.assertEqual(session_wm("mango"), "mango")
+        self.assertEqual(session_wm("gnome"), MAIN_WM)
+        # Death sentence: the old tuple must not resurface in the engine.
+        import subprocess
+        import sys
+        from pathlib import Path
+        repo = Path(__file__).resolve().parents[2]
+        result = subprocess.run(
+            ["grep", "-rn", "SUPPORTED_WMS", str(repo / "nyxuri")],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.stdout.strip(), "", "SUPPORTED_WMS must stay dead")
+
     def test_checkbox_list_radio_group_mutual_exclusion(self):
         """CheckboxList with radio_group enforces single selection."""
         from io import StringIO
-        from nyxuri.tui import CheckboxEntry, CheckboxList
+        from nyxuri.ui.tui import CheckboxEntry, CheckboxList
 
         entries = [
             CheckboxEntry(key="wm_niri", label="Niri", checked=True, radio_group="wm"),
@@ -154,7 +186,7 @@ class TestMangoAdaptation(unittest.TestCase):
         chk2 = CheckboxList("title", entries2)
         # DOWN (moves focus to mango) -> SPACE (toggles mango on, niri off) -> ENTER
         with patch("sys.stdin.isatty", return_value=True), \
-             patch("nyxuri.tui.read_key", side_effect=["DOWN", "SPACE", "ENTER"]), \
+             patch("nyxuri.ui.tui.read_key", side_effect=["DOWN", "SPACE", "ENTER"]), \
              patch("sys.stdout", new_callable=StringIO):
             res2 = chk2.run()
 
@@ -166,7 +198,7 @@ class TestMangoAdaptation(unittest.TestCase):
             CheckboxEntry(key="wm_mango", label="Mango", checked=True, radio_group="wm"),
         ])
         with patch("sys.stdin.isatty", return_value=True), \
-             patch("nyxuri.tui.read_key", side_effect=["DOWN", "SPACE", "ENTER"]), \
+             patch("nyxuri.ui.tui.read_key", side_effect=["DOWN", "SPACE", "ENTER"]), \
              patch("sys.stdout", new_callable=StringIO):
             res3 = chk3.run()
         self.assertEqual(res3, ["wm_mango"])
@@ -178,15 +210,15 @@ class TestMangoAdaptation(unittest.TestCase):
             CheckboxEntry(key="app_waybar", label="Waybar", checked=True),
         ])
         with patch("sys.stdin.isatty", return_value=True), \
-             patch("nyxuri.tui.read_key", side_effect=["n", "ENTER"]), \
+             patch("nyxuri.ui.tui.read_key", side_effect=["n", "ENTER"]), \
              patch("sys.stdout", new_callable=StringIO):
             res4 = chk4.run()
         self.assertEqual(res4, ["wm_niri"])
 
     def test_run_master_component_menu_uses_radio_for_wms(self):
         """Master component menu creates radio entries for all supported WMs."""
-        from nyxuri.installer.menus import run_master_component_menu
-        from nyxuri.tui import CheckboxList
+        from nyxuri.ui.menus import run_master_component_menu
+        from nyxuri.ui.tui import CheckboxList
         import os
 
         captured_entries = []

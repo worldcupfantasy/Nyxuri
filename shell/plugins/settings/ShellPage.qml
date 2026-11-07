@@ -1,9 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
-import qs.app
 import qs.commons
 import qs.services
-import "../keystone/tools"
 import qs.ui
 import qs.commons.i18n
 import qs.ui
@@ -59,35 +57,15 @@ NexusPageBase {
         PreferenceAction {
             icon: "hub"
             text: I18n.tr("Niri integration")
-            subtext: !NiriService.isNiri ? I18n.tr("Niri session not detected") : NiriService.connected
-                                           ? I18n.tr("Connected") : NiriService.reconnecting ? I18n.tr(
-                                                                                                   "Reconnecting") :
-                                                                                               I18n.tr("Disconnected")
-            trailingIcon: NiriService.isNiri && !NiriService.connected ? "restart_alt" : ""
+            subtext: !CompositorDriver.available ? I18n.tr("Niri session not detected") :
+                                                   CompositorDriver.connected ? I18n.tr("Connected") :
+                                                                                CompositorDriver.reconnecting
+                                                                                ? I18n.tr("Reconnecting") :
+                                                                                  I18n.tr("Disconnected")
+            trailingIcon: CompositorDriver.available && !CompositorDriver.connected ? "restart_alt" : ""
             onClicked: {
-                if (NiriService.isNiri && !NiriService.connected)
-                    NiriService.reconnect();
-            }
-        }
-
-        // The Shell plugins, projected straight off the ledger
-        // (plugin-model.md §6). Flipping dispatches `nyxuri on/off shell.<id>`
-        // via UnitControlService; this page mirrors nothing.
-        Repeater {
-            model: PluginRegistry.toggles
-
-            delegate: PreferenceToggle {
-                id: unitToggle
-
-                required property var modelData
-
-                readonly property bool pending: UnitControlService.pendingUnitId === unitToggle.modelData.id
-
-                text: I18n.tr(unitToggle.modelData.label)
-                subtext: unitToggle.pending ? I18n.tr("Applying…") : ""
-                checked: StateProjection.isEnabled(unitToggle.modelData.id)
-                enabled: !unitToggle.pending && UnitControlService.canToggle(unitToggle.modelData.id)
-                onToggled: UnitControlService.setUnit(unitToggle.modelData.id, checked)
+                if (CompositorDriver.available && !CompositorDriver.connected)
+                    CompositorDriver.reconnect();
             }
         }
 
@@ -143,16 +121,9 @@ NexusPageBase {
 
         InlineStatusBanner {
             Layout.fillWidth: true
-            visible: NiriService.configLoadFailed && NiriService.configError.length > 0
+            visible: CompositorDriver.configLoadFailed && CompositorDriver.configError.length > 0
             tone: "error"
-            message: NiriService.configError
-        }
-
-        InlineStatusBanner {
-            Layout.fillWidth: true
-            visible: DockService.configError.length > 0
-            tone: "error"
-            message: DockService.configError
+            message: CompositorDriver.configError
         }
 
         InlineStatusBanner {

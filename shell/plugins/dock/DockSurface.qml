@@ -6,7 +6,6 @@ import Quickshell.Wayland
 import qs.commons
 import qs.ui
 import qs.services
-import qs.app
 import "./DockLayout.js" as DockLayout
 import "./DockMotion.js" as DockMotion
 import qs.commons.i18n
@@ -16,7 +15,7 @@ PanelWindow {
 
     required property string edge
 
-    readonly property bool animationTargetsEnabled: NiriService.supportsMinimizeAnimation && root.visible
+    readonly property bool animationTargetsEnabled: CompositorDriver.supportsMinimizeAnimation && root.visible
     onAnimationTargetsEnabledChanged: root.updateAnimationTargets()
 
     // Geometry notifications arrive once per animated property, not once per
@@ -54,7 +53,7 @@ PanelWindow {
                             });
             }
         }
-        NiriService.setWindowAnimationTargets(root.screen.name, result);
+        CompositorDriver.setWindowAnimationTargets(root.screen.name, result);
     }
     readonly property bool horizontal: edge === "bottom"
     readonly property real axisLength: horizontal ? width : height

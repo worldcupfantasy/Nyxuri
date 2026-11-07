@@ -6,16 +6,13 @@ import qs.commons
 import "../commons/SidebarPolicy.js" as SidebarPolicy
 import "../commons/WallpaperSource.js" as WallpaperSource
 import qs.services
-import "../plugins/wallpaper"
-import qs.app
 import qs.commons.i18n
 
 Singleton {
     id: root
 
     readonly property string configOverride: Quickshell.env("NYXURI_PERSONALIZATION_CONFIG") || ""
-    readonly property string filePath: root.configOverride !== "" ? root.configOverride : Paths.configHome
-                                                                    + "/config.json"
+    readonly property string filePath: root.configOverride !== "" ? root.configOverride : ConfigService.filePath
 
     readonly property string configDir: {
         const separator = root.filePath.lastIndexOf("/");
@@ -168,7 +165,7 @@ Singleton {
                                                               "label": I18n.tr("Right"),
                                                               "icon": "arrow_forward"
                                                           })]
-    property bool storeReady: false
+    readonly property bool storeReady: ConfigService.storeReady
     property bool loading: false
     property bool loaded: false
     readonly property bool ready: root.storeReady && root.loaded && !root.loading
@@ -259,8 +256,14 @@ Singleton {
 
     property bool lyricAlbumArtTint: true
 
+    property bool lyricShowTranslation: true
+
     function setLyricSource(value) {
         setValue("lyricSource", normalizedOption(root.lyricSources, value, "kugou"));
+    }
+
+    function setLyricShowTranslation(value) {
+        setValue("lyricShowTranslation", value === true);
     }
 
     function setLyricOffsetMs(value) {
@@ -284,56 +287,8 @@ Singleton {
             "label": "Super"
         },
         {
-            "value": "windows",
-            "label": "Windows"
-        },
-        {
-            "value": "arch",
-            "label": "Arch"
-        },
-        {
-            "value": "linux",
-            "label": "Linux"
-        },
-        {
-            "value": "ubuntu",
-            "label": "Ubuntu"
-        },
-        {
-            "value": "debian",
-            "label": "Debian"
-        },
-        {
-            "value": "fedora",
-            "label": "Fedora"
-        },
-        {
-            "value": "nixos",
-            "label": "NixOS"
-        },
-        {
-            "value": "linuxmint",
-            "label": "Linux Mint"
-        },
-        {
-            "value": "gentoo",
-            "label": "Gentoo"
-        },
-        {
-            "value": "steam",
-            "label": "Steam"
-        },
-        {
-            "value": "apple",
-            "label": "Apple"
-        },
-        {
-            "value": "googlechrome",
-            "label": "Chrome"
-        },
-        {
             "value": "command",
-            "label": "Command"
+            "label": "⌘ Command"
         }
     ]
     property string cursorTheme: ""
@@ -1907,6 +1862,7 @@ Singleton {
                 "lyricOffsetMs": root.lyricOffsetMs,
                 "lyricFontSize": root.lyricFontSize,
                 "lyricAlbumArtTint": root.lyricAlbumArtTint,
+                "lyricShowTranslation": root.lyricShowTranslation,
                 "cursorTheme": root.cursorTheme,
                 "cursorSize": root.cursorSize,
                 "cursorHideWhenTyping": root.cursorHideWhenTyping,
@@ -2057,6 +2013,9 @@ Singleton {
         root.lyricFontSize = normalizedBoundedInt(theme.lyricFontSize, 26, root.lyricFontSizeMin,
                                                   root.lyricFontSizeMax);
         root.lyricAlbumArtTint = theme.lyricAlbumArtTint === true;
+        // Absent in older configs; default to on rather than mirroring the
+        // `=== true` pattern used above, which would read a missing key as off.
+        root.lyricShowTranslation = theme.lyricShowTranslation !== false;
         root.themeMode = theme.mode === "light" ? "light" : "dark";
         root.superKeyStyle = root.superKeyStyles.some(style => style.value === theme.superKeyStyle)
                 ? theme.superKeyStyle : "text";
@@ -2215,20 +2174,9 @@ Singleton {
         const seed = WallpaperSource.primary(source);
         candidate.wallpaper.recentColors = root.normalizedRecentColors([seed].concat(
                                                                            root.recentWallpaperColors));
-        // FileView suppresses identical setText() calls even after failure.
-        // A fresh writer makes the same draft retryable without reloading or
-        // mutating the formal configuration on a failed Save.
-        const writer = paletteWriterComponent.createObject(root, {
-                                                               path: root.filePath
-                                                           });
-        if (!writer)
-            return false;
-        writer.setText(JSON.stringify(candidate, null, 2));
-        writer.waitForJob();
-        const saved = writer.succeeded;
-        writer.destroy();
-        if (!saved)
-            return false;
+        ConfigService.updateSections(candidate);
+        ConfigService.saveNow();
+
         // Publish only after the atomic write succeeded. No normal setters,
         // extra writes, or theme generation are involved in this operation.
         if (scope.target === "banner") {
@@ -2251,97 +2199,31 @@ Singleton {
         return true;
     }
 
-    Component {
-        id: paletteWriterComponent
-        FileView {
-            property bool succeeded: false
-            blockWrites: true
-            atomicWrites: true
-            onSaved: succeeded = true
-        }
-    }
-
     function save() {
         if (!root.storeReady || root.loading)
             return;
 
-        configFile.setText(JSON.stringify(root.toJson(), null, 2));
+        ConfigService.updateSections(root.toJson());
     }
 
-    Process {
-        id: ensureStoreDir
-
-        command: ["mkdir", "-p", root.configDir]
-        running: true
-        onExited: {
-            root.storeReady = true;
-            configFile.reload();
-        }
-    }
-
-    Timer {
-        id: configReloadDebounce
-
-        interval: 50
-        repeat: false
-        onTriggered: configFile.reload()
-    }
-
-    FileView {
-        id: configFile
-
-        path: root.filePath
-        blockLoading: true
-        blockWrites: true
-        atomicWrites: true
-        watchChanges: true
-        onFileChanged: configReloadDebounce.restart()
-        onLoaded: {
-            let shouldRepair = false;
-            let parsed = {};
+    Connections {
+        target: ConfigService
+        function onConfigLoaded() {
             root.loading = true;
-            try {
-                parsed = JSON.parse(configFile.text().trim() || "{}");
-                shouldRepair = root.needsWallpaperMigration(parsed) || root.needsEffectsMigration(parsed)
-                        || root.needsThemeMigration(parsed) || root.needsEdgePositionMigration(parsed)
-                        || root.needsScrollingMigration(parsed);
-                root.loadFromObject(parsed);
-                shouldRepair = shouldRepair || JSON.stringify(parsed.wallpaper || {}) !== JSON.stringify(
-                            root.toJson().wallpaper) || JSON.stringify(parsed.effects || {})
-                        !== JSON.stringify(root.toJson().effects) || JSON.stringify(parsed.theme || {})
-                        !== JSON.stringify(root.toJson().theme) || JSON.stringify(parsed.bar || {}) !== JSON.stringify(
-                            root.toJson().bar) || JSON.stringify(parsed.keystone || {}) !== JSON.stringify(
-                            root.toJson().keystone) || JSON.stringify(parsed.desktopCards || {})
-                        !== JSON.stringify(root.toJson().desktopCards);
-            } catch (error) {
-                console.warn("PersonalizationConfig failed to load; leaving the existing config untouched:",
-                             error);
-                shouldRepair = false;
-            }
+            root.loadFromObject(ConfigService.rawConfig);
             root.loading = false;
             root.loaded = true;
             root.settingsLoaded();
-            if (shouldRepair)
-                root.save();
         }
-        onLoadFailed: error => {
+    }
+
+    Component.onCompleted: {
+        if (ConfigService.storeReady) {
             root.loading = true;
-            root.loadFromObject({});
+            root.loadFromObject(ConfigService.rawConfig);
             root.loading = false;
             root.loaded = true;
             root.settingsLoaded();
-            if (error === FileViewError.FileNotFound)
-                root.save();
-            else
-                console.warn("PersonalizationConfig could not be read; leaving the existing config untouched:",
-                             error);
         }
-        onSaveFailed: error => console.warn("PersonalizationConfig could not be saved:", error)
-    }
-
-    Component.onDestruction: {
-        configReloadDebounce.stop();
-        if (ensureStoreDir)
-            ensureStoreDir.running = false;
     }
 }

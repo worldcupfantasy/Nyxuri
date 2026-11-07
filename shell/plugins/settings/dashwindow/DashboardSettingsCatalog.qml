@@ -16,6 +16,7 @@ QtObject {
     readonly property var sections: [
         {
             "title": I18n.tr("Interface"),
+            "page": I18n.tr("Interface"),
             "icon": "palette",
             "cards": [
                 {
@@ -157,6 +158,7 @@ QtObject {
         },
         {
             "title": I18n.tr("Bar"),
+            "page": I18n.tr("Bar & dock"),
             "icon": "toolbar",
             "cards": [
                 {
@@ -201,6 +203,7 @@ QtObject {
         },
         {
             "title": I18n.tr("Keystone"),
+            "page": I18n.tr("Keystone & media"),
             "icon": "toggle_off",
             "cards": [
                 {
@@ -323,6 +326,7 @@ QtObject {
         },
         {
             "title": I18n.tr("Media"),
+            "page": I18n.tr("Keystone & media"),
             "icon": "lyrics",
             "cards": [
                 {
@@ -353,11 +357,19 @@ QtObject {
                     "title": I18n.tr("Tint from album art"),
                     "icon": "palette",
                     "kw": "lyrics album art colour color palette extract 歌词 封面 取色"
+                },
+                {
+                    "type": "toggle",
+                    "key": "lyrics:Show translation",
+                    "title": I18n.tr("Show translation"),
+                    "icon": "translate",
+                    "kw": "lyrics translation translate subtitle 歌词 翻译 译文"
                 }
             ]
         },
         {
             "title": I18n.tr("Wallpaper"),
+            "page": I18n.tr("Desktop"),
             "icon": "wallpaper",
             "cards": [
                 {
@@ -523,6 +535,7 @@ QtObject {
         },
         {
             "title": I18n.tr("Desktop"),
+            "page": I18n.tr("Desktop"),
             "icon": "desktop_windows",
             "cards": [
                 {
@@ -541,6 +554,7 @@ QtObject {
         },
         {
             "title": I18n.tr("Dock"),
+            "page": I18n.tr("Bar & dock"),
             "icon": "dock",
             "cards": [
                 {
@@ -628,6 +642,7 @@ QtObject {
         },
         {
             "title": I18n.tr("Spotlight"),
+            "page": I18n.tr("Bar & dock"),
             "icon": "search",
             "cards": [
                 {
@@ -658,6 +673,7 @@ QtObject {
         },
         {
             "title": I18n.tr("Language & region"),
+            "page": I18n.tr("Interface"),
             "icon": "translate",
             "cards": [
                 {
@@ -688,6 +704,7 @@ QtObject {
         },
         {
             "title": I18n.tr("Sidebar clock"),
+            "page": I18n.tr("Clocks"),
             "icon": "schedule",
             "cards": [
                 {
@@ -724,6 +741,7 @@ QtObject {
         },
         {
             "title": I18n.tr("Horizontal clock"),
+            "page": I18n.tr("Clocks"),
             "icon": "schedule",
             "cards": [
                 {
@@ -772,6 +790,7 @@ QtObject {
         },
         {
             "title": I18n.tr("Display colour"),
+            "page": I18n.tr("Display"),
             "icon": "brightness_6",
             "cards": [
                 {

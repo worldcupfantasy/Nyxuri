@@ -1,19 +1,26 @@
-"""Contract tests for the KM0 plugin model and the KM1 kernel modules.
+"""Contract tests for the plugin model.
 
-The Kahn reference copy is retired (plugin-model.md §7, KM1 step ①):
-dependency resolution is tested against the real ``nyxuri.kernel.resolver``,
-blueprint access against ``nyxuri.kernel.registry``, and the five-field plugin
-record shape against ``nyxuri.kernel.ledger``.
+Dependency resolution is tested against ``nyxuri.deploy.catalog``,
+blueprint access against ``nyxuri.deploy.catalog``, and the plugin
+record shape against ``nyxuri.state.store``.
 """
 
 import json
+import os
 import tomllib
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from nyxuri.kernel import ledger, registry
-from nyxuri.deploy.manifest import load_manifest
-from nyxuri.kernel.resolver import resolve_order
+import nyxuri.system.env as core
+from nyxuri.state import store
+from nyxuri.deploy import catalog
+from nyxuri.deploy.manifest import (
+    discover_manifest_apps,
+    invalidate_manifest_cache,
+    load_manifest,
+)
+from nyxuri.deploy.catalog import resolve_order
 from tests.utils import TempEnv
 
 
@@ -125,8 +132,8 @@ class TestKernelRegistry(unittest.TestCase):
         """A bare directory with no manifest is a first-class plugin."""
         with TempEnv() as ctx:
             self._stage_configs(ctx, {"bare-plugin": None})
-            self.assertIn("bare-plugin", registry.plugin_ids())
-            m = registry.load_plugin("bare-plugin")
+            self.assertIn("bare-plugin", catalog.plugin_ids())
+            m = catalog.load_plugin("bare-plugin")
             self.assertEqual(m.id, "bare-plugin")
             self.assertEqual(m.packages_repo, ["bare-plugin"])
             self.assertEqual(m.preserve, [])
@@ -135,38 +142,165 @@ class TestKernelRegistry(unittest.TestCase):
         """The repo blueprint is scanned through the same registry."""
         with TempEnv() as ctx:
             ctx.env.plugins_src = self.root_dir / "plugins"
-            ids = registry.plugin_ids()
+            ids = catalog.plugin_ids()
             self.assertIn("kitty", ids)
-            self.assertEqual(registry.load_plugin("kitty").id, "kitty")
+            self.assertEqual(catalog.load_plugin("kitty").id, "kitty")
 
     def test_manifest_dependencies_parsed(self):
         """Top-level `dependencies` is the plugin-dependency declaration."""
         with TempEnv() as ctx:
             self._stage_configs(ctx, {"shell": 'dependencies = ["base"]\n', "base": None})
-            self.assertEqual(registry.load_plugin("shell").dependencies, ["base"])
-            self.assertEqual(registry.load_plugin("base").dependencies, [])
+            self.assertEqual(catalog.load_plugin("shell").dependencies, ["base"])
+            self.assertEqual(catalog.load_plugin("base").dependencies, [])
 
     def test_dependency_graph_feeds_resolver(self):
-        """Kernel integration: registry graph -> resolver order, no coupling."""
+        """Kernel integration: catalog graph -> resolver order, no coupling."""
         with TempEnv() as ctx:
             self._stage_configs(ctx, {"shell": 'dependencies = ["base"]\n', "base": None})
-            order = resolve_order(registry.dependency_graph())
+            order = resolve_order(catalog.dependency_graph())
             self.assertLess(order.index("base"), order.index("shell"))
 
     def test_unknown_unit_raises(self):
         with TempEnv() as ctx:
             self._stage_configs(ctx, {})
             with self.assertRaises(KeyError):
-                registry.load_plugin("ghost")
+                catalog.load_plugin("ghost")
 
 
-class TestKernelLedger(unittest.TestCase):
+class TestThirdPartyRoot(unittest.TestCase):
+    """S1 third-party data root: ~/.local/share/nyxuri/plugins/<id>/ (H4/H8).
+
+    plugin-model.md §8 + manifest-schema.md 第三方章: ids derive from the raw
+    directory name (full reverse-DNS), official blueprints shadow third-party
+    ones, reserved namespaces are unclaimable, symlinks are rejected at the
+    scan layer.
+    """
+
+    def setUp(self):
+        self.root_dir = Path(__file__).resolve().parent.parent
+
+    def _stage_third_party(self, ctx, spec: dict[str, str | None]) -> Path:
+        """Create plugin dirs under the temp third-party data root.
+
+        spec maps plugin id -> manifest TOML body (None = bare dir).
+        """
+        data_plugins = ctx.env.data_dir / "plugins"
+        data_plugins.mkdir(parents=True, exist_ok=True)
+        for uid, toml_text in spec.items():
+            plugin = data_plugins / uid
+            plugin.mkdir()
+            if toml_text is not None:
+                text = f'schemaVersion = 1\nid = "{uid}"\nkinds = ["config"]\n' + toml_text
+                (plugin / "manifest.toml").write_text(text, encoding="utf-8")
+        return data_plugins
+
+    def test_data_dir_xdg_policy(self):
+        """data_dir follows XDG_DATA_HOME under home; outside-home falls back."""
+        with TempEnv() as ctx:
+            self.assertEqual(
+                ctx.env.data_dir, ctx.home / ".local" / "share" / "nyxuri"
+            )
+            with patch.dict(
+                os.environ, {"XDG_DATA_HOME": str(ctx.home / "xdg-data")}
+            ):
+                self.assertEqual(
+                    core.Environment().data_dir, ctx.home / "xdg-data" / "nyxuri"
+                )
+            with patch.dict(os.environ, {"XDG_DATA_HOME": "/opt/elsewhere"}):
+                self.assertEqual(
+                    core.Environment().data_dir,
+                    ctx.home / ".local" / "share" / "nyxuri",
+                )
+
+    def test_third_party_discovered_and_loaded(self):
+        """A directory under the data root is a registry plugin, id = dirname."""
+        with TempEnv() as ctx:
+            data_plugins = self._stage_third_party(
+                ctx, {"io.github.test.cool": None}
+            )
+            self.assertIn("io.github.test.cool", catalog.plugin_ids())
+            self.assertEqual(catalog.load_plugin("io.github.test.cool").id,
+                             "io.github.test.cool")
+            self.assertEqual(
+                catalog.plugin_dir("io.github.test.cool"),
+                data_plugins / "io.github.test.cool",
+            )
+
+    def test_third_party_manifest_id_must_match_dir(self):
+        """Same root-derived id rule as official roots: drift is a parse error."""
+        with TempEnv() as ctx:
+            self._stage_third_party(ctx, {"io.github.test.cool": None})
+            mpath = (ctx.env.data_dir / "plugins" / "io.github.test.cool"
+                     / "manifest.toml")
+            mpath.write_text(
+                'schemaVersion = 1\nid = "someone.else"\nkinds = ["config"]\n',
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                catalog.load_plugin("io.github.test.cool")
+
+    def test_official_blueprint_wins_shadow(self):
+        """A same-named official blueprint shadows the third-party entry."""
+        with TempEnv() as ctx:
+            self._stage_third_party(ctx, {"kitty": None})
+            self.assertEqual(
+                catalog.plugin_dir("kitty"), ctx.env.plugins_src / "kitty"
+            )
+
+    def test_symlinked_plugin_is_invisible(self):
+        """禁软链 at the scan layer: a symlinked plugin dir does not exist."""
+        with TempEnv() as ctx:
+            real = ctx.home / "outside-real-plugin"
+            real.mkdir()
+            (real / "manifest.toml").write_text(
+                'schemaVersion = 1\nid = "io.github.test.link"\nkinds = ["config"]\n',
+                encoding="utf-8",
+            )
+            link = self._stage_third_party(ctx, {}) / "io.github.test.link"
+            link.symlink_to(real)
+            self.assertNotIn("io.github.test.link", catalog.plugin_ids())
+            self.assertIsNone(catalog.plugin_dir("io.github.test.link"))
+            with self.assertRaises(KeyError):
+                catalog.load_plugin("io.github.test.link")
+
+    def test_reserved_prefix_invisible_in_data_root(self):
+        """Reserved namespaces are unclaimable from the third-party root."""
+        with TempEnv() as ctx:
+            self._stage_third_party(ctx, {"shell.evil": None, "nyxuri.evil": None})
+            self.assertNotIn("shell.evil", catalog.plugin_ids())
+            self.assertNotIn("nyxuri.evil", catalog.plugin_ids())
+
+    def test_shell_namespace_still_decisive(self):
+        """Regression: longest-prefix rule survives the third root."""
+        with TempEnv() as ctx:
+            self._stage_third_party(ctx, {"shell.fake": None})
+            self.assertEqual(catalog.load_plugin("shell.bar").id, "shell.bar")
+            self.assertNotIn("shell.fake", catalog.plugin_ids())
+
+    def test_manifest_cache_invalidation(self):
+        """invalidate_manifest_cache() makes the next discovery see new truth."""
+        with TempEnv() as ctx:
+            src = ctx.home / "cache-probe-src"
+            src.mkdir()
+            ctx.env.plugins_src = src
+            # Populate the cache on an empty root, then add the plugin: the
+            # second discovery must still serve the stale snapshot.
+            self.assertEqual(discover_manifest_apps(), [])
+            (src / "cache-probe").mkdir()
+            self.assertEqual(discover_manifest_apps(), [])
+            invalidate_manifest_cache()
+            self.assertIn(
+                "cache-probe", [name for name, _ in discover_manifest_apps()]
+            )
+
+
+class TestPluginStore(unittest.TestCase):
     """State domain: the five-field frozen plugin record (plugin-model.md §3)."""
 
     def test_unit_record_frozen_shape(self):
         """A record carries exactly the five frozen fields and persists."""
         with TempEnv() as ctx:
-            rec = ledger.set_plugin("kitty", state="enabled", form="default",
+            rec = store.set_plugin("kitty", state="enabled", form="default",
                                   files={"kitty.conf": "abc123"})
             self.assertEqual(
                 set(rec),
@@ -180,8 +314,8 @@ class TestKernelLedger(unittest.TestCase):
             # persisted under the top-level `plugins` key (R0-1 rename)
             on_disk = json.loads((ctx.home / ".local/state/nyxuri/state.json").read_text())
             self.assertEqual(on_disk["plugins"]["kitty"]["form"], "default")
-            self.assertEqual(ledger.get_plugin("kitty"), rec)
-            self.assertEqual(ledger.all_plugins(), {"kitty": rec})
+            self.assertEqual(store.get_plugin("kitty"), rec)
+            self.assertEqual(store.all_plugins(), {"kitty": rec})
 
     def test_disabled_record_holds_vault_only_when_archived(self):
         """Amended rule (R0-2): a disabled record names its vault when — and
@@ -189,24 +323,24 @@ class TestKernelLedger(unittest.TestCase):
         nothing archived) is honest with vault=null; a real `off` always
         names the archive dir."""
         with TempEnv():
-            rec = ledger.set_plugin("kitty", state="disabled")
+            rec = store.set_plugin("kitty", state="disabled")
             self.assertIsNone(rec["vault"], "never-enabled records have nothing archived")
-            rec = ledger.set_plugin("kitty", state="disabled",
+            rec = store.set_plugin("kitty", state="disabled",
                                   vault="/state/nyxuri/vault/kitty")
             self.assertEqual(rec["state"], "disabled")
 
     def test_invalid_state_rejected(self):
         with TempEnv():
             with self.assertRaises(ValueError):
-                ledger.set_plugin("kitty", state="half-open")
+                store.set_plugin("kitty", state="half-open")
 
     def test_upsert_keeps_sibling_records(self):
         with TempEnv():
-            ledger.set_plugin("kitty", state="enabled")
-            ledger.set_plugin("fish", state="enabled")
-            ledger.set_plugin("kitty", state="disabled", vault="/vault/kitty")
-            self.assertEqual(ledger.get_plugin("fish")["state"], "enabled")
-            self.assertEqual(ledger.get_plugin("kitty")["state"], "disabled")
+            store.set_plugin("kitty", state="enabled")
+            store.set_plugin("fish", state="enabled")
+            store.set_plugin("kitty", state="disabled", vault="/vault/kitty")
+            self.assertEqual(store.get_plugin("fish")["state"], "enabled")
+            self.assertEqual(store.get_plugin("kitty")["state"], "disabled")
 
     def test_legacy_shapes_migration_swept_at_r0_3(self):
         """R0-3 sweep: legacy ledger migration shims (units/presets/parts) are gone."""
@@ -222,16 +356,16 @@ class TestKernelLedger(unittest.TestCase):
             }, indent=2) + "\n", encoding="utf-8")
 
             # Canonical reader finds no 'plugins' key, returns None without rewrites
-            self.assertIsNone(ledger.get_plugin("kitty"))
+            self.assertIsNone(store.get_plugin("kitty"))
             on_disk = json.loads(path.read_text(encoding="utf-8"))
             self.assertNotIn("plugins", on_disk)
             self.assertIn("units", on_disk)
 
-    def test_fresh_ledger_only_carries_new_shape(self):
+    def test_fresh_store_only_carries_new_shape(self):
         """New installs never produce the legacy keys or field names."""
         with TempEnv() as ctx:
-            ledger.set_plugin("kitty", state="enabled")
-            ledger.set_form_slot("kitty", "effects", "xray")
+            store.set_plugin("kitty", state="enabled")
+            store.set_form_slot("kitty", "effects", "xray")
             on_disk = json.loads(
                 (ctx.home / ".local/state/nyxuri/state.json").read_text(encoding="utf-8")
             )
@@ -243,12 +377,12 @@ class TestKernelLedger(unittest.TestCase):
 
     def test_form_slot_choices_round_trip(self):
         with TempEnv():
-            ledger.set_form_slot("niri", "effects", "xray")
-            ledger.set_form_slot("niri", "glow", "glow")
-            ledger.set_form_slot("kitty", "effects", "off")
-            self.assertEqual(ledger.get_form_slots("niri"), {"effects": "xray", "glow": "glow"})
-            self.assertEqual(ledger.get_form_slots("kitty"), {"effects": "off"})
-            self.assertEqual(ledger.get_form_slots("ghost"), {})
+            store.set_form_slot("niri", "effects", "xray")
+            store.set_form_slot("niri", "glow", "glow")
+            store.set_form_slot("kitty", "effects", "off")
+            self.assertEqual(store.get_form_slots("niri"), {"effects": "xray", "glow": "glow"})
+            self.assertEqual(store.get_form_slots("kitty"), {"effects": "off"})
+            self.assertEqual(store.get_form_slots("ghost"), {})
 
 
 if __name__ == "__main__":

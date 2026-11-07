@@ -52,7 +52,15 @@ ALLOWED_OPTIONAL_IMPORTERS = {
     # re-add an entry only together with a real fallback/bridge file.
 }
 
-GATEWAY_FILE = "app/ActionGateway.qml"
+GATEWAY_FILE = "services/ActionGateway.qml"
+# S0-5: the compositor driver is the sole argv truth for the niri dialect
+# (`niri msg` / `niri --version`). Its exec calls are the confined channel
+# itself, not a bypass of the gateway.
+COMPOSITOR_DRIVER_FILE = "services/NiriDriver.qml"
+# S1-3: the plugin heart (Omarchy Fork & Trim) runs its guard trio (scan /
+# init / watcher-reaper) through `bash -c` with static script literals;
+# runtime paths travel as positional argv ($0/$1), never concatenated.
+PLUGIN_HEART_FILE = "services/PluginRegistry.qml"
 
 
 def _plugins_domain_of(resolved: str) -> str:
@@ -63,15 +71,6 @@ def _plugins_domain_of(resolved: str) -> str:
             return parts[i + 1].lower()
     return ""
 
-ALLOWED_MODULE_CROSS_IMPORTS = {
-    # host domain -> set of allowed target domains
-    "desktopcards": {"systemcards", "wallpaper"},
-    "sidebars": {"systemcards", "settings", "wallpaper", "filepicker", "quicksettings", "desktopcards"},
-    "lock": {"wallpaper"},
-    "settings": {"wallpaper", "filepicker", "systemcards", "keystone"},
-    "keystone": {"notifications", "filepicker", "bar", "sidebars"},
-    "launcher": {"wallpaper"},
-}
 
 # LIFE008: UI-layer direct I/O. FileView/Process belong to domain services and
 # configs; view files must present state and route intent, not read files or
@@ -89,8 +88,6 @@ UI_IO_ALLOWLIST = {
     "plugins/lock/Lock.qml",
     # pre-lock screen capture session inside the lock domain
     "plugins/lock/PreLockCapture.qml",
-    # keystone cover-art palette extraction (domain singleton)
-    "plugins/keystone/media/MediaPalette.qml",
 }
 
 
@@ -238,7 +235,7 @@ def check_file_violations(
     lines = content.splitlines()
 
     is_shared = is_shared_override if is_shared_override is not None else (rel_path.startswith(("commons/", "ui/")) or file_path.name.startswith("shared") or "shared_sideeffect" in file_path.name)
-    is_gateway = rel_path.endswith(GATEWAY_FILE)
+    is_gateway = rel_path.endswith(GATEWAY_FILE) or rel_path.endswith(COMPOSITOR_DRIVER_FILE)
     has_destruction = ("Component.onDestruction" in content) or ("function closeChildWindows()" in content) or ("function unload()" in content and "Component.onDestruction: unload()" in content)
 
     # 1. LIFE003: Shared layer side-effects
@@ -294,7 +291,7 @@ def check_file_violations(
         # Registry template hooks are shell command strings by contract (user
         # managed, run verbatim with a parameter array and injected env); the
         # shell-string ban targets concatenating runtime values into commands.
-        shell_hook_allowlist = {"services/TemplateService.qml"}
+        shell_hook_allowlist = {"services/TemplateService.qml", PLUGIN_HEART_FILE}
         for idx, line in enumerate(lines, 1):
             stripped = line.strip()
             if stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*"):
@@ -319,10 +316,10 @@ def check_file_violations(
                     )
                 )
 
-    # 2b. LIFE008: UI-layer direct I/O (plugins/ views and app/ top level).
+    # 2b. LIFE008: UI-layer direct I/O (plugins/ views and shell.qml top level).
     # services/ is exempt by layer definition.
     is_ui_layer = ui_layer_override if ui_layer_override is not None else (
-        rel_path.startswith(("plugins/", "app/"))
+        rel_path.startswith("plugins/") or rel_path == "shell.qml"
     )
     if is_ui_layer and not is_gateway:
         declares_io = re.search(r"\b(FileView|Process)\s*\{|property\s+(Process|FileView)\b", content) is not None
@@ -536,7 +533,6 @@ def check_file_violations(
     if rel_path.startswith("plugins/") or module_domain_override is not None:
         curr_domain = module_domain_override if module_domain_override is not None else (parts[1].lower() if len(parts) >= 3 else "")
         if curr_domain:
-            allowed_targets = ALLOWED_MODULE_CROSS_IMPORTS.get(curr_domain, set())
             for idx, line in enumerate(lines, 1):
                 stripped = line.strip()
                 if stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*"):
@@ -556,13 +552,13 @@ def check_file_violations(
                     target_domain = _plugins_domain_of(resolved)
                     if not target_domain:
                         continue
-                if target_domain != curr_domain and target_domain not in allowed_targets:
+                if target_domain != curr_domain:
                     violations.append(
                         AuditViolation(
                             "ARCH001",
                             rel_path,
                             idx,
-                            f"Forbidden cross-domain import: Domain '{curr_domain}' cannot import domain '{target_domain}'; route via ActionGateway or the commons/ui layer",
+                            f"Forbidden cross-domain import: Domain '{curr_domain}' cannot import domain '{target_domain}'; route via ActionGateway, qs.services, or the commons/ui layer",
                         )
                     )
 
@@ -823,8 +819,11 @@ def get_git_changed_files(repo_root: Path) -> List[Path]:
 
 
 def get_all_target_files(repo_root: Path) -> List[Path]:
-    target_dirs = ["app", "commons", "ui", "services", "plugins"]
+    target_dirs = ["commons", "ui", "services", "plugins"]
     result: List[Path] = []
+    root_shell = repo_root / "shell.qml"
+    if root_shell.is_file():
+        result.append(root_shell)
     for d in target_dirs:
         dir_path = repo_root / d
         if not dir_path.is_dir():
@@ -859,9 +858,9 @@ def main() -> int:
     else:
         # Check if current directory or script parent is shell root
         cwd = Path.cwd()
-        if (cwd / "app").is_dir() and (cwd / "units").is_dir():
+        if (cwd / "services").is_dir() and (cwd / "plugins").is_dir():
             root_path = cwd
-        elif (cwd / "shell" / "app").is_dir():
+        elif (cwd / "shell" / "services").is_dir() and (cwd / "shell" / "plugins").is_dir():
             root_path = cwd / "shell"
         else:
             script_dir = Path(__file__).resolve().parent

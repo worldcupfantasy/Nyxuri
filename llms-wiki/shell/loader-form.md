@@ -24,6 +24,9 @@
    代码，零宿主改动」不再受静态名单牵制）。
 5. config root 之外的插件（S1 第三方 `~/.local/share/nyxuri/plugins/<id>/`）与
    root 内插件同形态，实测同为 20/20——S1 接入清单的装载面由本定案覆盖。
+   S1-3 对抗探针补全池覆盖面：`qs.commons` / `qs.commons.i18n` / `qs.services` /
+   `qs.ui` 四池 import 从树外 file:// 全部解析，ui 原子类型实例化成功
+   （共享层 qmldir 合成由 shell.qml 顶层 import 保证，与装载来源无关）。
 
 ## 单例登记（S0-2 实机教训，2026-11-01）
 
@@ -39,7 +42,7 @@
 S0-2 预热退役当天实机症状：launcher / settings（及 sidebars 局部）全部
 插件单例调用报 `Property 'x' of object Y is not a function`——同目录隐式
 引用拿到的是未登记的类型对象。修复 = 13 个插件目录补 `qmldir` 单例登记表
-（23 条），契约由 `shell/tests/test_plugin_manifests.py:TestSingletonRegistration`
+（23 条），契约由 `tests/shell/test_plugin_manifests.py:TestSingletonRegistration`
 焊接（双向：pragma Singleton 必登记、登记必真单例、qmldir 只许单例行）。
 S1 第三方插件自带其目录的 qmldir 即同形态成立。
 

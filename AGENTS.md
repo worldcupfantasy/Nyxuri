@@ -11,6 +11,7 @@
 - "能跑但脏" vs "慢一点但干净可控"——默认选后者。
 - 我懒得开局，一旦犹豫要不要动手，直接给个最小可执行起点，别等我把全部细节想清楚再问。
 - 别用"这已经很好了"敷衍，我要的是经得起自己回头看的东西；汇报说重点，不用每次背景铺垫。
+- 经用户标注/声明后能整抄成熟实现的绝不从零自研脑补：凡有成熟参考树、上游母体或既有规格的模块，坚守「先全量物理复制（`cp`）原件建立基线，再做减法剪裁适配」的 **Fork & Trim** 模式。
 
 ---
 
@@ -20,13 +21,13 @@
 - **改动范围 ➔ 必读 Wiki 契约**：拒绝盲目全库勘探，按改动范围查阅对应契约：
 
 | 部署引擎 / 插件模型 (`nyxuri/deploy/`, `plugins/`) | `overview.md`, `plugin-model.md`, `file-preservation.md` | `python3 -m unittest tests/deploy/test_deploy.py tests/test_plugin_model.py` + 沙箱部署 |
-| 内核 / 插件事务 (`nyxuri/kernel/`) | `plugin-model.md` | `python3 -m unittest tests/kernel/test_transaction.py` |
-| 包管理 / 供给 (`nyxuri/pkg/`, plugins-only 声明) | `manifest-schema.md`（可选供给节）, `delayed-decisions.md` | `python3 -m unittest tests/pkg/` |
-| 状态 / 快照 (`nyxuri/state/`) | `state-ops.md` | `python3 -m unittest tests/state/` |
-| CLI 命令 / 流程编排 (`cli.py`, `nyxuri/installer/`) | `operation-map.md`, `manifest-schema.md` | `python3 -m unittest tests/test_cli.py tests/test_ai_specs.py` |
-| 终端 UI / 桌面能力 (`tui.py`, `nyxuri/desktop/`) | `tui-charter.md` | 交互冒烟，检查退出 trap |
-| 形态机制 (`deploy/forms.py` + `desktop/forms.py`) | `forms.md`, `plugin-model.md` | `python3 -m unittest tests/deploy/test_forms.py tests/kernel/test_transaction.py` |
-| 双语文案 / 提示信息 (`translations.toml`, `core.py`) | `i18n.md`, `writing-voice.md` | `python3 -m unittest tests/test_i18n.py` |
+| 部署执行 / 状态校验 (`nyxuri/deploy/engine.py`, `nyxuri/state/`) | `plugin-model.md` | `python3 -m unittest tests/kernel/test_transaction.py` |
+| 环境与系统供给 (`nyxuri/system/`, plugins-only 声明) | `manifest-schema.md`, `overview.md` | `python3 -m unittest tests/pkg/` |
+| 状态与快照 (`nyxuri/state/`) | `state-ops.md` | `python3 -m unittest tests/state/` |
+| CLI 入口与编排 (`nyxuri/cli.py`, `nyxuri/ui/workflows.py`) | `operation-map.md`, `manifest-schema.md` | `python3 -m unittest tests/test_cli.py tests/test_ai_specs.py` |
+| 终端 UI 与交互 (`nyxuri/ui/`) | `tui-charter.md` | 交互冒烟，检查退出 trap |
+| 形态机制 (`nyxuri/deploy/forms.py`) | `forms.md`, `plugin-model.md` | `python3 -m unittest tests/deploy/test_forms.py tests/kernel/test_transaction.py` |
+| 双语文案 / 提示信息 (`translations.toml`, `nyxuri/system/i18n.py`) | `i18n.md`, `writing-voice.md` | `python3 -m unittest tests/test_i18n.py` |
 | 文档体系 (`llms-wiki/`, `notes/`, `ROADMAP*`) | `docs-charter.md` | `python3 -m unittest tests/test_ai_specs.py` |
 | Nyxuri Shell (`shell/`) | `shell-rules` (`shell/AGENTS.md`), `shell/ROADMAP.md`, `llms-wiki/shell/` | `python3 -m unittest tests/shell/` + `compileall` |
 | AUR 打包 (`packaging/`) | `overview.md`（仓库地图） | `python3 -m unittest tests/pkg/test_packaging.py` |
@@ -68,6 +69,7 @@
 - **改动原则**：
   - 3 步以下直接做；涉及卸载/破坏性操作先确认。
   - 只动请求范围，不顺手重构无关代码；文字遵循 `writing-voice.md`（像人说话、去 AI 味）。
+  - **整抄再裁（Fork & Trim）**：凡有上游参考树或成熟母体的模块，以「物理复制原件 ➔ 定向做减法/适配」为标准工作流，严禁自研缩水残卷冒充整抄。
 - **测试规范**：所有新测试必须使用 `tests/utils.py:TempEnv`，严禁写入真实 `~/.config`；外部命令必须有参数形状断言。
 - **完成检查**：
   1. 纯文档/文本：文本就绪、链接正确即完成（必要时 `test_ai_specs.py` 绿），零额外测试；

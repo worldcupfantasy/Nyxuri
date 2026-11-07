@@ -1,5 +1,4 @@
 import QtQuick
-import qs.app
 import QtQuick.Effects
 import Qt5Compat.GraphicalEffects
 import Quickshell
@@ -12,7 +11,6 @@ import qs.commons
 import qs.ui
 import "../../clock"
 import "../../media"
-import "../../../notifications"
 import "../../volume"
 import "../../hub"
 import "../../tools"
@@ -36,7 +34,7 @@ Variants {
         if (instances.length === 0)
             return null;
 
-        const outputName = String(NiriService.currentOutput || "");
+        const outputName = String(CompositorDriver.currentOutput || "");
         if (outputName.length > 0) {
             for (let index = 0; index < instances.length; ++index) {
                 const instance = instances[index];

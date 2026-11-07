@@ -2,10 +2,8 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import qs.app
 import qs.services
 import qs.commons.i18n
-import "../keystone/tools"
 import "ShellDiagnostics.js" as ShellDiagnostics
 import "ShellSamplerMath.js" as SamplerMath
 
@@ -145,10 +143,10 @@ Singleton {
     // mirrors no switch state (plugin-model.md §6 single switch truth).
     function buildUnitRows() {
         return PluginRegistry.toggles.map(unit => {
-            const on = StateProjection.isEnabled(unit.id);
+            const on = StateProjection.isEnabledUnit(unit.unitId);
             return {
                 "id": unit.id,
-                "unit": "shell." + unit.id,
+                "unit": unit.unitId,
                 "enabled": on,
                 "state": on ? "loaded" : "unloaded"
             };
@@ -167,9 +165,9 @@ Singleton {
                                                      "firstFrameMs": metrics.first_frame_ms,
                                                      "readyMs": metrics.ready_ms,
                                                      "ipcReadyMs": metrics.ipc_ready_ms,
-                                                     "compositorPresent": NiriService.isNiri,
-                                                     "compositorConnected": NiriService.connected,
-                                                     "compositorReconnecting": NiriService.reconnecting,
+                                                     "compositorPresent": CompositorDriver.available,
+                                                     "compositorConnected": CompositorDriver.connected,
+                                                     "compositorReconnecting": CompositorDriver.reconnecting,
                                                      "samplingEnabled": root.samplingActive,
                                                      "samplingIntervalMs": root.sampleIntervalMs,
                                                      "samplingCpuPercent": root.cpuPercent,
@@ -235,23 +233,12 @@ Singleton {
                                                              "id": "hyprpicker",
                                                              "available": ColorPickerService.available,
                                                              "probed": ColorPickerService.probeFinished
-                                                         },
-                                                         {
-                                                             "id": "key-cli",
-                                                             "available": SystemMonitorService.ready,
-                                                             "probed": SystemMonitorService.hasData
-                                                                       || SystemMonitorService.state
-                                                                       !== "idle"
                                                          }
                                                      ],
                                                      "errors": [
                                                          {
-                                                             "source": "niri",
-                                                             "message": NiriService.configError
-                                                         },
-                                                         {
-                                                             "source": "dock",
-                                                             "message": DockService.configError
+                                                             "source": "compositor",
+                                                             "message": CompositorDriver.configError
                                                          },
                                                          {
                                                              "source": "system-monitor",
