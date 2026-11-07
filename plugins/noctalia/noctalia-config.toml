@@ -32,6 +32,7 @@ end = [
     "clipboard",
     "tray",
     "notifications",
+    "battery",
     "session",
 ]
 center = ["clock"]
@@ -369,6 +370,13 @@ visualization = "none"
 [widget.sysmon]
 glyph = "cpu"
 visualization = "none"
+
+# 电池容量：图标 + 百分比，跟随 Noctalia 调色板
+[widget.battery]
+device = "auto"
+display_mode = "glyph"
+show_label = true
+label_content = "percent"
 
 # 电源键左键改成打开控制中心主页（Home 标签），会话菜单仍在 Home 顶部按钮里
 [widget.session.actions]
