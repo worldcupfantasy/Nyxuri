@@ -28,6 +28,8 @@ environment {
     GTK_IM_MODULE ""
     QT_QPA_PLATFORM "wayland;xcb"
     QT_QPA_PLATFORMTHEME "gtk3"
+    // 控件风格用 Breeze（插件已装）；颜色/字体/图标仍由 gtk3 平台主题从 GTK 取
+    QT_STYLE_OVERRIDE "breeze"
     QT_WAYLAND_DISABLE_WINDOWDECORATION "1"
 }
 
