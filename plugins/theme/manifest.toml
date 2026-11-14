@@ -13,5 +13,10 @@ target = "~/.config/nyxuri/templates"
 morphology = "merge"
 # theme.py 把 GTK3 主题设成 adw-gtk3 / adw-gtk3-dark，主题本体由官方仓库的
 # adw-gtk-theme 提供——声明在此，缺包即由依赖安装补齐（issue #146）。
-packages = ["adw-gtk-theme"]
+# Qt 侧 niri 环境用 QT_STYLE_OVERRIDE=breeze：Qt6 风格来自 breeze，
+# Qt5 风格来自 breeze5；缺包时 Qt 会静默回落 Fusion。
+packages = ["adw-gtk-theme", "breeze", "breeze5"]
+# 鼠标指针走 Bibata（黑版 Classic），niri config 的 xcursor-theme 指向它。
+# 仅 AUR 有包，官方仓库无对应物。
+packages_aur = ["bibata-cursor-theme-bin"]
 label = "Theme Templates"
