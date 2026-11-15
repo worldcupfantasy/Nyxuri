@@ -48,13 +48,3 @@ layer-rule {
         xray false
     }
 }
-
-// 浏览器保持不透明，不跟随全局 0.9 半透明和毛玻璃
-window-rule {
-    match app-id=r"^(google-chrome|chrome|chromium|firefox|firefox-esr|librewolf|zen|brave-browser|microsoft-edge|vivaldi-stable)$"
-    opacity 1.0
-    background-effect {
-        blur false
-    }
-}
-
